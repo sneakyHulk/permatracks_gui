@@ -1,0 +1,6 @@
+[submodule "thirdparty/helloimgui"]
+	path = thirdparty/helloimgui
+	url = https://github.com/pthom/hello_imgui.git
+[submodule "thirdparty/imguizmo"]
+	path = thirdparty/imguizmo
+	url = https://github.com/CedricGuillemet/ImGuizmo.git

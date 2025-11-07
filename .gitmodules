@@ -4,3 +4,9 @@
 [submodule "thirdparty/imguizmo"]
 	path = thirdparty/imguizmo
 	url = https://github.com/CedricGuillemet/ImGuizmo.git
+[submodule "thirdparty/implot3d"]
+	path = thirdparty/implot3d
+	url = https://github.com/brenocq/implot3d.git
+[submodule "thirdparty/implot"]
+	path = thirdparty/implot
+	url = https://github.com/epezent/implot.git

@@ -1,10 +1,11 @@
 project(list_serial_devices)
 
-find_library(IOKIT_LIBRARY IOKit REQUIRED)
-find_library(FOUNDATION_LIBRARY Foundation REQUIRED)
-
 if (APPLE)
     message(STATUS "Configuring for macOS")
+
+    find_library(IOKIT_LIBRARY IOKit REQUIRED)
+    find_library(FOUNDATION_LIBRARY Foundation REQUIRED)
+
     add_library(${PROJECT_NAME} src/list_serial_devices_macos.cpp)
     target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIBRARY} ${IOKIT_LIBRARY})
 elseif (UNIX)

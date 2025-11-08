@@ -30,7 +30,7 @@ void glob_devices(std::set<std::string>& devices, const std::string& pattern) {
 }
 
 
-std::vector<SerialDeviceInfo> list_serial_ports(bool include_links = false) {
+std::vector<SerialDeviceInfo> list_serial_devices() {
 	std::set<std::string> devices;
 	glob_devices(devices, "/dev/ttyS*");
 	glob_devices(devices, "/dev/ttyUSB*");
@@ -40,7 +40,7 @@ std::vector<SerialDeviceInfo> list_serial_ports(bool include_links = false) {
 	glob_devices(devices, "/dev/ttyAP*");
 	glob_devices(devices, "/dev/ttyGS*");
 
-	std::vector<SerialPortInfo> ports;
+	std::vector<SerialDeviceInfo> ports;
 
 	for (const auto& dev : devices) {
 		std::string name = std::filesystem::path(dev).filename();
@@ -58,7 +58,7 @@ std::vector<SerialDeviceInfo> list_serial_ports(bool include_links = false) {
 
 		std::string subsystem = subsystem_path.filename();
 
-		SerialPortInfo info;
+		SerialDeviceInfo info;
 		info.device = dev;
 
 		// Handle USB serial and CDC devices

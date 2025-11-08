@@ -2,6 +2,7 @@
 
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
+
 #include <string>
 
 #include "SerialConnection.h"
@@ -15,9 +16,8 @@ class ConnectionTab {
 	SerialConnection& connection;
 	std::string error_message;
 
-public:
-	explicit ConnectionTab(SerialConnection& connection) : connection(connection) {
-	}
+   public:
+	explicit ConnectionTab(SerialConnection& connection) : connection(connection) {}
 
 	void render() {
 		ImGui::BeginChild("Connection Tab Child", ImVec2(-1, -1), true);
@@ -31,10 +31,8 @@ public:
 		ImGui::Separator();
 
 		ImGui::BeginDisabled(connection.connected());
-		if (ImGui::BeginTable("SerialPortsTable", 6,
-			ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg |
-			ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
-			ImGui::TableSetupScrollFreeze(0, 1); // freeze header
+		if (ImGui::BeginTable("SerialPortsTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
+			ImGui::TableSetupScrollFreeze(0, 1);  // freeze header
 			ImGui::TableSetupColumn("Device");
 			ImGui::TableSetupColumn("Product");
 			ImGui::TableSetupColumn("Manufacturer");
@@ -99,15 +97,15 @@ public:
 			ImGui::Spacing();
 			ImGui::Separator();
 
-			if (ImGui::Button("Disconnect", {500, 0})) { stop_connecting(); }
+			if (ImGui::Button("Disconnect", {500, 0})) {
+				stop_connecting();
+			}
 
 			ImGui::End();
 		}
-
-		ImGui::EndTabItem();
 	}
 
-private:
+   private:
 	void refresh() {
 		devices = list_serial_devices();
 		selected_index = -1;
@@ -128,9 +126,7 @@ private:
 		}
 	}
 
-	void stop_connecting() {
-		connection.close_serial_port();
-	}
+	void stop_connecting() { connection.close_serial_port(); }
 
 	void stop_tapping() {
 		buffer.clear();
@@ -171,14 +167,30 @@ private:
 
 		ImGui::SetNextItemWidth(150);
 		if (ImGui::BeginCombo("##combo", std::to_string(connection.baud()).c_str())) {
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD9600).c_str(), connection.baud() == Baudrate::BAUD9600)) { connection.baud() = Baudrate::BAUD9600; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD19200).c_str(), connection.baud() == Baudrate::BAUD19200)) { connection.baud() = Baudrate::BAUD19200; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD38400).c_str(), connection.baud() == Baudrate::BAUD38400)) { connection.baud() = Baudrate::BAUD38400; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD57600).c_str(), connection.baud() == Baudrate::BAUD57600)) { connection.baud() = Baudrate::BAUD57600; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD115200).c_str(), connection.baud() == Baudrate::BAUD115200)) { connection.baud() = Baudrate::BAUD115200; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD230400).c_str(), connection.baud() == Baudrate::BAUD230400)) { connection.baud() = Baudrate::BAUD230400; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD460800).c_str(), connection.baud() == Baudrate::BAUD460800)) { connection.baud() = Baudrate::BAUD460800; }
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD921600).c_str(), connection.baud() == Baudrate::BAUD921600)) { connection.baud() = Baudrate::BAUD921600; }
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD9600).c_str(), connection.baud() == Baudrate::BAUD9600)) {
+				connection.baud() = Baudrate::BAUD9600;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD19200).c_str(), connection.baud() == Baudrate::BAUD19200)) {
+				connection.baud() = Baudrate::BAUD19200;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD38400).c_str(), connection.baud() == Baudrate::BAUD38400)) {
+				connection.baud() = Baudrate::BAUD38400;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD57600).c_str(), connection.baud() == Baudrate::BAUD57600)) {
+				connection.baud() = Baudrate::BAUD57600;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD115200).c_str(), connection.baud() == Baudrate::BAUD115200)) {
+				connection.baud() = Baudrate::BAUD115200;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD230400).c_str(), connection.baud() == Baudrate::BAUD230400)) {
+				connection.baud() = Baudrate::BAUD230400;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD460800).c_str(), connection.baud() == Baudrate::BAUD460800)) {
+				connection.baud() = Baudrate::BAUD460800;
+			}
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD921600).c_str(), connection.baud() == Baudrate::BAUD921600)) {
+				connection.baud() = Baudrate::BAUD921600;
+			}
 			ImGui::EndCombo();
 		}
 
@@ -221,8 +233,7 @@ private:
 			ImGui::PopStyleVar();
 
 			// Auto-scroll to bottom
-			if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY())
-				ImGui::SetScrollHereY(1.0f);
+			if (ImGui::GetScrollY() >= ImGui::GetScrollMaxY()) ImGui::SetScrollHereY(1.0f);
 
 			ImGui::EndChild();
 

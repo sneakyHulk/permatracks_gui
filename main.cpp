@@ -2,11 +2,12 @@
 #include <imgui.h>
 #include <implot.h>
 #include <implot3d.h>
+
+#include <cmath>
 #include <ranges>
 
-#include "SerialConnection.h"
 #include "App.h"
-
+#include "SerialConnection.h"
 
 void Demo_ImPlot3D_Scatter() {
 	if (ImPlot3D::BeginPlot("Calibration", {-1, -1})) {
@@ -20,7 +21,7 @@ void Demo_ImPlot3D_Scatter() {
 			for (int i = 0; i < count; ++i) {
 				xs[i] = 2.0 * (rand() / (double)RAND_MAX - 0.5);
 				ys[i] = 2.0 * (rand() / (double)RAND_MAX - 0.5);
-				zs[i] = sin(xs[i] * 3.0) * cos(ys[i] * 3.0);
+				zs[i] = std::sin(xs[i] * 3.0) * std::cos(ys[i] * 3.0);
 			}
 		}
 
@@ -40,7 +41,6 @@ int main(int, char**) {
 	params.appWindowParams.windowTitle = "PERMATRACKS";
 
 	params.appWindowParams.windowGeometry.size = {1024, 720};
-	params.appWindowParams.windowGeometry.position = {100, 100};
 	params.appWindowParams.windowGeometry.positionMode = HelloImGui::WindowPositionMode::MonitorCenter;
 	params.appWindowParams.windowGeometry.monitorIdx = 0;
 
@@ -49,12 +49,10 @@ int main(int, char**) {
 	params.platformBackendType = HelloImGui::PlatformBackendType::Glfw;
 
 	params.imGuiWindowParams.showMenuBar = true;
-	params.imGuiWindowParams.showMenu_App = true; // shows "App" menu
-	params.imGuiWindowParams.showMenu_View = true; // shows "View" menu
+	params.imGuiWindowParams.showMenu_App = true;   // shows "App" menu
+	params.imGuiWindowParams.showMenu_View = true;  // shows "View" menu
 
-	params.callbacks.ShowGui = [&app]() {
-		app.render();
-	};
+	params.callbacks.ShowGui = [&app]() { app.render(); };
 
 	params.callbacks.PostInit = []() {
 		ImPlot::CreateContext();

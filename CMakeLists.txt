@@ -6,10 +6,10 @@ set(CMAKE_CXX_STANDARD 23)
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
 find_package(glfw3 REQUIRED)
-find_package(Assimp REQUIRED)
+find_package(assimp REQUIRED)
 find_package(glm CONFIG REQUIRED)
 find_package(Boost CONFIG REQUIRED)
-find_package(tbb REQUIRED)
+find_package(TBB REQUIRED)
 
 ### HELLOIMGUI
 set(HELLOIMGUI_USE_GLFW3 ON CACHE BOOL "" FORCE)
@@ -41,11 +41,12 @@ target_include_directories(${PROJECT_NAME} PUBLIC thirdparty/implot3d)
 ### add local libraries
 add_subdirectory(list_serial_devices)
 add_subdirectory(ring_buffer)
+add_subdirectory(msg)
 
 ### GUI
 project(gui)
 
-add_executable(${PROJECT_NAME} main.cpp src/App.cpp src/MainTabBar.cpp src/SerialConnection.cpp src/ConnectionTab.cpp src/CalibrationTab.cpp)
+add_executable(${PROJECT_NAME} main.cpp src/App.cpp src/MainTabBar.cpp src/SerialConnection.cpp src/ConnectionTab.cpp src/CalibrationTab.cpp src/MiMedMagnetometerArraySerialConnectionBinary.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
@@ -54,6 +55,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC implot3d)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
 target_link_libraries(${PROJECT_NAME} PUBLIC ring_buffer)
+target_link_libraries(${PROJECT_NAME} PUBLIC msg)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 project(minimal)

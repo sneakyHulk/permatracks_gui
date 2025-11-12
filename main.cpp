@@ -31,10 +31,7 @@ void Demo_ImPlot3D_Scatter() {
 }
 
 int main(int, char**) {
-	boost::asio::io_context io;
-	SerialConnection connection;
-
-	App app(connection);
+	App app;
 
 	HelloImGui::RunnerParams params;
 

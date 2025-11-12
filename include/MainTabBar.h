@@ -11,14 +11,15 @@
 
 #include "CalibrationTab.h"
 #include "ConnectionTab.h"
+#include "ZeroingTab.h"
 
-class MainTabBar : ConnectionTab, CalibrationTab {
+class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab {
 	std::string previous_active_tab = "Connection";
 	std::string active_tab = "Connection";
 	std::string new_active_tab = "Connection";
 
    public:
-	MainTabBar(SerialConnection& connection) : ConnectionTab(connection), CalibrationTab(connection) {}
+	MainTabBar() {}
 
 	void render() {
 		ImGui::BeginTabBar("Main Tab Bar");
@@ -45,6 +46,16 @@ class MainTabBar : ConnectionTab, CalibrationTab {
 				new_active_tab = "Calibration";
 			} else {
 				CalibrationTab::render();
+			}
+
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Zeroing", nullptr, previous_active_tab == "Zeroing" ? ImGuiTabItemFlags_SetSelected : 0)) {
+			if (active_tab != "Zeroing" && active_tab == previous_active_tab) {
+				new_active_tab = "Zeroing";
+			} else {
+				ZeroingTab::render();
 			}
 
 			ImGui::EndTabItem();

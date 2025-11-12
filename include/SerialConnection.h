@@ -11,6 +11,7 @@
 #include <iostream>
 #include <memory>
 #include <thread>
+#include <variant>
 
 #include "ring_buffer.h"
 
@@ -65,27 +66,45 @@ enum Baudrate : unsigned int {
 	BAUD921600 = 921600,
 };
 
-struct SerialError {
-	int code;
+struct ERROR {
 	std::string message;
+
+	ERROR(int const code, std::string const& message) : message(message + " (" + std::to_string(code) + ")") {}
+
+	explicit ERROR(int const code) : message(std::to_string(code)) {}
+
+	explicit ERROR(std::string const& message) : message(message) {}
+
+	~ERROR() = default;
+
+	char const* what() const noexcept { return message.c_str(); }
+};
+
+enum class SerialConnectionState {
+	NOT_CONNECTED,
+	CONNECTED,
 };
 
 class SerialConnection {
+   protected:
 	Baudrate _baud = Baudrate::BAUD230400;
 	int _serial_port = -1;
-	bool _connected = false;
+
+	std::atomic_bool _connected = false;
+
+	SerialConnection() { std::cout << "SerialConnection()" << std::endl; }
 
    public:
-	std::expected<void, SerialError> open_serial_port(std::string const& device) {
+	std::expected<void, ERROR> open_serial_port(std::string const& device) {
 		_serial_port = open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
 		if (_serial_port == -1) {
-			return std::unexpected{SerialError{errno, std::strerror(errno)}};
+			return std::unexpected{ERROR{errno, std::strerror(errno)}};
 		}
 
 		struct termios tty{};
 		if (tcgetattr(_serial_port, &tty) != 0) {
 			close(_serial_port);
-			return std::unexpected{SerialError{errno, std::strerror(errno)}};
+			return std::unexpected{ERROR{errno, std::strerror(errno)}};
 		}
 
 		// Configure serial port basics
@@ -107,7 +126,7 @@ class SerialConnection {
 
 		if (tcsetattr(_serial_port, TCSANOW, &tty) != 0) {
 			close(_serial_port);
-			std::unexpected(SerialError{errno, std::strerror(errno)});
+			std::unexpected(ERROR{errno, std::strerror(errno)});
 		}
 
 		_connected = true;
@@ -115,72 +134,35 @@ class SerialConnection {
 	}
 
 	void close_serial_port() {
-		_connected = false;
-		close(_serial_port);
-		_serial_port = -1;
+		if (bool expected = true; _connected.compare_exchange_strong(expected, false)) {
+			close(_serial_port);
+			_serial_port = -1;
+		}
 	}
 
-	[[nodiscard]] std::expected<std::span<const char>, SerialError> read_some() const {
+	[[nodiscard]] std::expected<std::span<const char>, ERROR> read_some() const {
 		static std::array<char, 128> tmp;
 		if (ssize_t const bytes_transferred = read(_serial_port, tmp.data(), tmp.size()); bytes_transferred < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 			}
-			return std::unexpected(SerialError{errno, std::strerror(errno)});
+			return std::unexpected(ERROR{errno, std::strerror(errno)});
 		} else {
 			return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 		}
 	}
 
-	[[nodiscard]] std::expected<std::size_t, SerialError> read_some(std::span<std::uint8_t> buffer) const {
+	[[nodiscard]] std::expected<std::size_t, ERROR> read_some(std::span<std::uint8_t> buffer) const {
 		if (ssize_t const bytes_transferred = read(_serial_port, buffer.data(), buffer.size()); bytes_transferred < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				return 0;
 			}
-			return std::unexpected(SerialError{errno, std::strerror(errno)});
+			return std::unexpected(ERROR{errno, std::strerror(errno)});
 		} else {
-			std::cout << static_cast<std::size_t>(bytes_transferred) << std::endl;
 			return static_cast<std::size_t>(bytes_transferred);
 		}
 	}
 
-	// template <typename... MESSAGE_TYPEs>
-	// requires(is_MESSAGE_TYPE<MESSAGE_TYPEs>::value && ...) [[nodiscard]] std::expected<std::span<const char>, SerialError> read_message() {
-	//	static ring_buffer<std::uint8_t, 8192> buffer;
-	//	constexpr std::size_t min_message_size = std::min({message_size_of<MESSAGE_TYPEs>::value...});
-	//
-	//	while (true) {
-	//		do {
-	//			auto t = buffer.linear_sub_array();
-	//			if (ssize_t const bytes_transferred = read(_serial_port, t.data(), t.size()); bytes_transferred < 0) {
-	//				if (errno != EAGAIN && errno != EWOULDBLOCK) {
-	//					return std::unexpected(SerialError{errno, std::strerror(errno)});
-	//				}
-	//
-	//				buffer.rotate(static_cast<std::size_t>(bytes_transferred));
-	//			}
-	//		} while (buffer.size() < min_message_size);
-	//
-	//		auto decode = []<typename T>(auto i) -> std::expected<void, > {
-	//			if constexpr (message_size_of<T>::value < std::numeric_limits<std::size_t>::max()) {
-	//				if (buffer[i] == id_of<T>::value) {
-	//					if (buffer.size() < i + message_size_of<T>::value || buffer[i + message_size_of<T>::value - 1] != id_of<T>::value) return {};
-	//				}
-	//			} else {
-	//			}
-	//		};
-	//
-	//		for (auto i = 0; i < buffer.size(); ++i) {
-	//			if (auto e = (decode.template operator()<MESSAGE_TYPEs>(i) && ...)) {
-	//			} else {
-	//				return e.value();
-	//			}
-	//		}
-	//	}
-	//}
-
 	Baudrate& baud() { return _baud; }
-	[[nodiscard]] bool connected() const { return _connected; }
-
-	SerialConnection() = default;
+	[[nodiscard]] bool connected() const { return _connected.load(); }
 };

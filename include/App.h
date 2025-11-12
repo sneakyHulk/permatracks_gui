@@ -4,17 +4,15 @@
 #include <imgui.h>
 #include <implot.h>
 #include <implot3d.h>
+
 #include <boost/asio.hpp>
 #include <string>
 
 #include "MainTabBar.h"
 
+class App final : protected MainTabBar {
+   public:
+	void render() { MainTabBar::render(); }
 
-class App : MainTabBar {
-	public:
-	App(SerialConnection& connection) : MainTabBar(connection) {}
-
-	void render() {
-		MainTabBar::render();
-	}
+	~App() = default;
 };

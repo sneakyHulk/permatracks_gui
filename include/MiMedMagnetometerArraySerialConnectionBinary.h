@@ -1,12 +1,14 @@
 #pragma once
 
 #include <ring_buffer.h>
+#include <tbb/concurrent_queue.h>
 
 #include <array>
 #include <boost/crc.hpp>
 #include <chrono>
 #include <cstdint>
 #include <ranges>
+#include <thread>
 
 #include "Array.h"
 #include "MagneticFluxDensityData.h"
@@ -43,27 +45,28 @@ template <typename MagDataType, std::size_t start_index, std::size_t n_sensors>
 struct type_of<SENSOR_TYPE<MagDataType, start_index, n_sensors>> : std::type_identity<MagDataType> {};
 
 template <typename... SENSOR_TYPEs>
-requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary {
+requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual protected SerialConnection {
    protected:
 	static constexpr std::size_t total_size = (0 + ... + n_sensors_of<SENSOR_TYPEs>::value);
 	static constexpr std::size_t magnetic_flux_density_message_size = 1 + ((4 + n_sensors_of<SENSOR_TYPEs>::value * sizeof(typename type_of<SENSOR_TYPEs>::type)) + ...) + sizeof(std::uint64_t) + 2 + 1;
 	static constexpr std::size_t max_message_size = magnetic_flux_density_message_size;
 	static constexpr std::size_t min_message_size = magnetic_flux_density_message_size;
 
-	SerialConnection& connection;
-
    public:
-	explicit MiMedMagnetometerArraySerialConnectionBinary(SerialConnection& connection) : connection(connection) {}
-	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, SerialError> push() {
-		static ring_buffer<std::uint8_t, 2 * max_message_size +1> buffer;
+	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> Output;
+	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> MagOutput;
+	static constexpr std::size_t OutputSize = total_size;
+
+	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> push(std::function<bool()> const& running = []() { return true; }) {
+		static ring_buffer<std::uint8_t, 2 * max_message_size + 1> buffer;
 
 		Message<Array<MagneticFluxDensityData, total_size>> out;
 		out.src = "array";
 
-		while (true) {
+		while (running()) {
 			do {
 				std::span<std::uint8_t> const t = buffer.linear_sub_array();
-				if (auto const bytes_transferred = connection.read_some(t); bytes_transferred.has_value()) {
+				if (auto const bytes_transferred = SerialConnection::read_some(t); bytes_transferred.has_value()) {
 					buffer.rotate(bytes_transferred.value());
 				} else {
 					return std::unexpected(bytes_transferred.error());
@@ -106,5 +109,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 				}
 			}
 		}
+
+		return {};
 	}
 };

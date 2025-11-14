@@ -72,6 +72,7 @@ target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
 target_link_libraries(${PROJECT_NAME} PUBLIC implot)
 target_link_libraries(${PROJECT_NAME} PUBLIC implot3d)
+target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
 target_link_libraries(${PROJECT_NAME} PUBLIC ring_buffer)
@@ -93,6 +94,14 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOU
 project(test3d)
 
 add_executable(${PROJECT_NAME} test/test3d.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
+target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+project(test3d_manipulation)
+
+add_executable(${PROJECT_NAME} test/test3d_manipulation.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
 target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)

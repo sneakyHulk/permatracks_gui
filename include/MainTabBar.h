@@ -11,9 +11,11 @@
 
 #include "CalibrationTab.h"
 #include "ConnectionTab.h"
+#include "MagnetSelectionTab.h"
+#include "TrackingTab.h"
 #include "ZeroingTab.h"
 
-class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab {
+class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab, protected MagnetSelectionTab, protected TrackingTab {
 	std::string previous_active_tab = "Connection";
 	std::string active_tab = "Connection";
 	std::string new_active_tab = "Connection";
@@ -61,17 +63,23 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 			ImGui::EndTabItem();
 		}
 
-		if (ImGui::BeginTabItem("Tracking Solution", nullptr, previous_active_tab == "Tracking Solution" ? ImGuiTabItemFlags_SetSelected : 0)) {
-			if (active_tab != "Tracking Solution") {
-				new_active_tab = "Tracking Solution";
+		if (ImGui::BeginTabItem("Magnet Selection", nullptr, previous_active_tab == "Magnet Selection" ? ImGuiTabItemFlags_SetSelected : 0)) {
+			if (active_tab != "Magnet Selection" && active_tab == previous_active_tab) {
+				new_active_tab = "Magnet Selection";
 			} else {
-				ImGui::BeginChild("Tracking Solution Child", ImVec2(-1, -1), true);
-
-				ImGui::Text("Tracking");
-				ImGui::Separator();
-
-				ImGui::EndChild();
+				MagnetSelectionTab::render();
 			}
+
+			ImGui::EndTabItem();
+		}
+
+		if (ImGui::BeginTabItem("Tracking", nullptr, previous_active_tab == "Tracking" ? ImGuiTabItemFlags_SetSelected : 0)) {
+			if (active_tab != "Tracking" && active_tab == previous_active_tab) {
+				new_active_tab = "Tracking";
+			} else {
+				TrackingTab::render();
+			}
+
 			ImGui::EndTabItem();
 		}
 

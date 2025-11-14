@@ -10,3 +10,6 @@
 [submodule "thirdparty/implot"]
 	path = thirdparty/implot
 	url = https://github.com/epezent/implot.git
+[submodule "thirdparty/ceres"]
+	path = thirdparty/ceres
+	url = https://github.com/ceres-solver/ceres-solver.git

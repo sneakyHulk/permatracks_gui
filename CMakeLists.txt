@@ -12,6 +12,17 @@ find_package(Boost CONFIG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Eigen3 REQUIRED)
 
+### Ceres
+set(USE_CUDA OFF)
+set(PROVIDE_UNINSTALL_TARGET OFF)
+set(BUILD_EXAMPLES OFF)
+set(BUILD_TESTING OFF)
+set(BUILD_BENCHMARKS OFF)
+set(BUILD_SHARED_LIBS ON)
+set(MINIGLOG ON)
+set(MINIGLOG_MAX_LOG_LEVEL 0)
+add_subdirectory(thirdparty/ceres)
+
 ### HELLOIMGUI
 set(HELLOIMGUI_USE_GLFW3 ON CACHE BOOL "" FORCE)
 set(HELLOIMGUI_HAS_OPENGL3 ON CACHE BOOL "" FORCE)
@@ -21,7 +32,7 @@ add_subdirectory(thirdparty/helloimgui)
 ### ImGuizmo
 project(imguizmo)
 
-add_library(${PROJECT_NAME} thirdparty/imguizmo/ImGuizmo.cpp)
+add_library(${PROJECT_NAME} thirdparty/imguizmo/ImGuizmo.cpp thirdparty/imguizmo/GraphEditor.cpp thirdparty/imguizmo/ImCurveEdit.cpp thirdparty/imguizmo/ImGradient.cpp thirdparty/imguizmo/ImSequencer.cpp)
 target_link_libraries(${PROJECT_NAME} PUBLIC imgui)
 target_include_directories(${PROJECT_NAME} PUBLIC thirdparty/imguizmo)
 
@@ -48,7 +59,14 @@ add_subdirectory(calibration)
 ### GUI
 project(gui)
 
-add_executable(${PROJECT_NAME} main.cpp src/App.cpp src/MainTabBar.cpp src/SerialConnection.cpp src/ConnectionTab.cpp src/CalibrationTab.cpp src/Calibration.cpp src/ZeroingTab.cpp src/Zeroing.cpp src/MiMedMagnetometerArraySerialConnectionBinary.cpp)
+add_executable(${PROJECT_NAME} main.cpp
+        src/App.cpp src/MainTabBar.cpp
+        src/SerialConnection.cpp src/ConnectionTab.cpp
+        src/CalibrationTab.cpp src/Calibration.cpp
+        src/ZeroingTab.cpp src/Zeroing.cpp
+        src/MagnetSelectionTab.cpp src/MagnetSelection.cpp
+        src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector.cpp
+        src/MiMedMagnetometerArraySerialConnectionBinary.cpp src/ERR.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
@@ -60,6 +78,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ring_buffer)
 target_link_libraries(${PROJECT_NAME} PUBLIC msg)
 target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
 target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
+target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
@@ -70,6 +89,15 @@ add_executable(${PROJECT_NAME} test/minimal.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+project(test3d)
+
+add_executable(${PROJECT_NAME} test/test3d.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
+target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
 
 #project(minimal_3d)
 #add_executable(${PROJECT_NAME} test/minimal_3d.cpp)

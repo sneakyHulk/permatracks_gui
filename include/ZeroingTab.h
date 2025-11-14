@@ -42,6 +42,8 @@ class ZeroingTab : virtual protected SerialConnection,
 	void start_thread() {
 		if (auto expected = ZeroingTabState::NONE; state.compare_exchange_strong(expected, ZeroingTabState::PLOTTING)) {
 			thread = std::thread([this]() {
+				std::cout << "Zeroing Thread started" << std::endl;
+
 				std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize> current_plotting_data{};
 				std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> current_zeroing_data{};
 
@@ -91,6 +93,8 @@ class ZeroingTab : virtual protected SerialConnection,
 
 					break;
 				}
+
+				std::cout << "Zeroing Thread finished" << std::endl;
 			});
 		}
 	}
@@ -213,6 +217,7 @@ class ZeroingTab : virtual protected SerialConnection,
 						thread.join();
 					}
 					start_thread();
+					break;
 				}
 				case ZeroingTabState::PLOTTING: {
 					if (ImGui::Button("Start Zeroing", {-1, 0})) {

@@ -13,6 +13,7 @@
 #include <thread>
 #include <variant>
 
+#include "ERR.h"
 #include "ring_buffer.h"
 
 // template <typename T>
@@ -66,25 +67,6 @@ enum Baudrate : unsigned int {
 	BAUD921600 = 921600,
 };
 
-struct ERROR {
-	std::string message;
-
-	ERROR(int const code, std::string const& message) : message(message + " (" + std::to_string(code) + ")") {}
-
-	explicit ERROR(int const code) : message(std::to_string(code)) {}
-
-	explicit ERROR(std::string const& message) : message(message) {}
-
-	~ERROR() = default;
-
-	char const* what() const noexcept { return message.c_str(); }
-};
-
-enum class SerialConnectionState {
-	NOT_CONNECTED,
-	CONNECTED,
-};
-
 class SerialConnection {
    protected:
 	Baudrate _baud = Baudrate::BAUD230400;
@@ -95,16 +77,16 @@ class SerialConnection {
 	SerialConnection() { std::cout << "SerialConnection()" << std::endl; }
 
    public:
-	std::expected<void, ERROR> open_serial_port(std::string const& device) {
+	std::expected<void, ERR> open_serial_port(std::string const& device) {
 		_serial_port = open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
 		if (_serial_port == -1) {
-			return std::unexpected{ERROR{errno, std::strerror(errno)}};
+			return std::unexpected{ERR{errno, std::strerror(errno)}};
 		}
 
 		struct termios tty{};
 		if (tcgetattr(_serial_port, &tty) != 0) {
 			close(_serial_port);
-			return std::unexpected{ERROR{errno, std::strerror(errno)}};
+			return std::unexpected{ERR{errno, std::strerror(errno)}};
 		}
 
 		// Configure serial port basics
@@ -126,7 +108,7 @@ class SerialConnection {
 
 		if (tcsetattr(_serial_port, TCSANOW, &tty) != 0) {
 			close(_serial_port);
-			std::unexpected(ERROR{errno, std::strerror(errno)});
+			std::unexpected(ERR{errno, std::strerror(errno)});
 		}
 
 		_connected = true;
@@ -140,24 +122,24 @@ class SerialConnection {
 		}
 	}
 
-	[[nodiscard]] std::expected<std::span<const char>, ERROR> read_some() const {
+	[[nodiscard]] std::expected<std::span<const char>, ERR> read_some() const {
 		static std::array<char, 128> tmp;
 		if (ssize_t const bytes_transferred = read(_serial_port, tmp.data(), tmp.size()); bytes_transferred < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 			}
-			return std::unexpected(ERROR{errno, std::strerror(errno)});
+			return std::unexpected(ERR{errno, std::strerror(errno)});
 		} else {
 			return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 		}
 	}
 
-	[[nodiscard]] std::expected<std::size_t, ERROR> read_some(std::span<std::uint8_t> buffer) const {
+	[[nodiscard]] std::expected<std::size_t, ERR> read_some(std::span<std::uint8_t> buffer) const {
 		if (ssize_t const bytes_transferred = read(_serial_port, buffer.data(), buffer.size()); bytes_transferred < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				return 0;
 			}
-			return std::unexpected(ERROR{errno, std::strerror(errno)});
+			return std::unexpected(ERR{errno, std::strerror(errno)});
 		} else {
 			return static_cast<std::size_t>(bytes_transferred);
 		}

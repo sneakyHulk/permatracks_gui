@@ -11,6 +11,7 @@
 #include <thread>
 
 #include "Array.h"
+#include "ERR.h"
 #include "MagneticFluxDensityData.h"
 #include "Message.h"
 #include "SerialConnection.h"
@@ -53,11 +54,11 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	static constexpr std::size_t min_message_size = magnetic_flux_density_message_size;
 
    public:
-	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> Output;
-	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> MagOutput;
+	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> Output;
+	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> MagOutput;
 	static constexpr std::size_t OutputSize = total_size;
 
-	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERROR> push(std::function<bool()> const& running = []() { return true; }) {
+	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> push(std::function<bool()> const& running = []() { return true; }) {
 		static ring_buffer<std::uint8_t, 2 * max_message_size + 1> buffer;
 
 		Message<Array<MagneticFluxDensityData, total_size>> out;

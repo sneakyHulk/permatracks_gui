@@ -28,7 +28,7 @@ class CalibrationTab : virtual protected SerialConnection,
 
 	std::thread thread;
 
-	// CalibrationTabData
+	// CalibrationTab Data
 	std::string error_message;
 
 	std::shared_ptr<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>> plot_data =
@@ -41,8 +41,10 @@ class CalibrationTab : virtual protected SerialConnection,
 	~CalibrationTab() { stop_thread(); }
 
 	void start_thread() {
-		if (CalibrationTabState expected = CalibrationTabState::NONE; state.compare_exchange_strong(expected, CalibrationTabState::PLOTTING)) {
+		if (auto expected = CalibrationTabState::NONE; state.compare_exchange_strong(expected, CalibrationTabState::PLOTTING)) {
 			thread = std::thread([this]() {
+				std::cout << "Calibration Thread started" << std::endl;
+
 				std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize> current_plotting_data{};
 				std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> current_calibration_data{};
 
@@ -92,6 +94,8 @@ class CalibrationTab : virtual protected SerialConnection,
 
 					break;
 				}
+
+				std::cout << "Calibration Thread finished" << std::endl;
 			});
 		}
 	}

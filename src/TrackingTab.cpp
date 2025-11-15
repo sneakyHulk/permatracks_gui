@@ -80,53 +80,80 @@ void LookAt(const float* eye, const float* at, const float* up, float* m16) {
 	m16[15] = 1.0f;
 }
 bool InvertMatrix(const float m[16], float invOut[16]) {
-	float inv[16], det;
-	int i;
-
+	float inv[16];
 	inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-
 	inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-
 	inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-
 	inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-
 	inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-
 	inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-
 	inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-
 	inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-
 	inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-
 	inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-
 	inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-
 	inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-
 	inv[3] = -m[1] * m[6] * m[15] + m[1] * m[7] * m[14] + m[5] * m[2] * m[15] - m[5] * m[3] * m[14] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-
 	inv[7] = m[0] * m[6] * m[15] - m[0] * m[7] * m[14] - m[4] * m[2] * m[15] + m[4] * m[3] * m[14] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-
 	inv[11] = -m[0] * m[5] * m[15] + m[0] * m[7] * m[13] + m[4] * m[1] * m[15] - m[4] * m[3] * m[13] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-
 	inv[15] = m[0] * m[5] * m[14] - m[0] * m[6] * m[13] - m[4] * m[1] * m[14] + m[4] * m[2] * m[13] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-
-	det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-
+	float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
 	if (det == 0) return false;
-
 	det = 1.0f / det;
-
-	for (i = 0; i < 16; i++) invOut[i] = inv[i] * det;
-
+	for (auto i = 0; i < 16; i++) invOut[i] = inv[i] * det;
 	return true;
 }
 void ExtractDirectionFromViewMatrix(const float* view, Vec3& forward, Vec3& right, Vec3& up) {
 	right = Vec3(view[0], view[4], view[8]);
 	up = Vec3(view[1], view[5], view[9]);
 	forward = Vec3(-view[2], -view[6], -view[10]);  // negative Z
+}
+Vec3 ExtractPositionFromViewMatrix(float const* view) {
+	float inv[16];
+	InvertMatrix(view, inv);
+	return Vec3(inv[12], inv[13], inv[14]);
+}
+Vec3 ExtractForwardFromViewMatrix(float const* view) {
+	// forward is the -Z axis of the camera
+	Vec3 f(-view[2], -view[6], -view[10]);
+	Normalize(&f.x, &f.x);
+	return f;
+}
+std::tuple<float, float> ExtractAnglesFromForwardSafe(Vec3 const& forward) {
+	// pitch: clamp because asin(±1) is valid, but later tan() or cos() becomes unstable
+	float pitch = -asin(std::clamp(forward.y, -0.9999f, 0.9999f));
+
+	float yaw = atan2(forward.x, forward.z);
+
+	return {pitch, yaw};
+}
+void TransformPoint(const float* m, const float in[3], float out[4]) {
+	const float x = in[0];
+	const float y = in[1];
+	const float z = in[2];
+
+	out[0] = m[0] * x + m[4] * y + m[8] * z + m[12];
+	out[1] = m[1] * x + m[5] * y + m[9] * z + m[13];
+	out[2] = m[2] * x + m[6] * y + m[10] * z + m[14];
+	out[3] = m[3] * x + m[7] * y + m[11] * z + m[15];
+}
+ImVec2 ProjectToScreen(const float* view, const float* proj, const float* model, const float local[3], const ImVec2& viewportMin, const ImVec2& viewportSize) {
+	float world[4];
+	TransformPoint(model, local, world);
+
+	float viewPos[4];
+	TransformPoint(view, world, viewPos);
+
+	float clip[4];
+	TransformPoint(proj, viewPos, clip);
+
+	if (clip[3] == 0.0f) clip[3] = 1e-6f;
+
+	float const ndcX = clip[0] / clip[3];
+	float const ndcY = clip[1] / clip[3];
+
+	float const sx = viewportMin.x + (ndcX * 0.5f + 0.5f) * viewportSize.x;
+	float const sy = viewportMin.y + (-ndcY * 0.5f + 0.5f) * viewportSize.y;  // flip Y
+
+	return {sx, sy};
 }

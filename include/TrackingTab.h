@@ -26,7 +26,6 @@ struct Vec3 {
 	Vec3() : x(0), y(0), z(0) {}
 	Vec3(float X, float Y, float Z) : x(X), y(Y), z(Z) {}
 };
-
 void Frustum(float left, float right, float bottom, float top, float znear, float zfar, float* m16);
 void Perspective(float fovyInDegrees, float aspectRatio, float znear, float zfar, float* m16);
 void Cross(const float* a, const float* b, float* r);
@@ -49,7 +48,7 @@ inline Vec3 ExtractForwardFromViewMatrix(float const* view) {
 	return f;
 }
 
-inline inline std::tuple<float, float> ExtractAnglesFromForward(Vec3 const& forward) {
+inline std::tuple<float, float> ExtractAnglesFromForward(Vec3 const& forward) {
 	// yAngle = rotation around Y
 	float yaw = atan2(forward.x, forward.z);
 
@@ -171,8 +170,6 @@ class TrackingTab : virtual protected SerialConnection,
 					Normalize(&right.x, &right.x);
 					Normalize(&up.x, &up.x);
 
-					auto [camXAngle, camYAngle] = ExtractAnglesFromForwardSafe(forward);
-
 					// -------------------------------------
 					//         MOUSE WHEEL ZOOM
 					// -------------------------------------
@@ -186,6 +183,8 @@ class TrackingTab : virtual protected SerialConnection,
 					//        ORBIT CAMERA (Middle)
 					// -------------------------------------
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
+						auto [camXAngle, camYAngle] = ExtractAnglesFromForwardSafe(forward);
+
 						camYAngle -= io.MouseDelta.x * 0.003f;
 						camXAngle += io.MouseDelta.y * 0.003f;
 
@@ -286,7 +285,6 @@ class TrackingTab : virtual protected SerialConnection,
 				ImGuizmo::ViewManipulate(cameraView, camDistance, ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 128, ImGui::GetWindowPos().y), ImVec2(128, 128), 0x10101010);
 
 				if (!hovered) {
-
 				}
 
 				ImGui::EndChild();

@@ -19,7 +19,7 @@
 #include "Position.h"
 
 template <std::size_t N>
-class CeresFunctorDirectionVector : public ceres::SizedCostFunction<3 * N, 3, 3, 3> {
+class CeresFunctorPositionAccuracyCost : public ceres::SizedCostFunction<3 * N, 3, 3> {
 	double const H1;
 	double const R1;
 	double const Br1;
@@ -27,15 +27,14 @@ class CeresFunctorDirectionVector : public ceres::SizedCostFunction<3 * N, 3, 3,
 	std::array<double, 3 * N> const &weights;
 
    public:
-	CeresFunctorDirectionVector(double const H1, double const R1, double const Br1, std::array<double, 3 * N> const &target, std::array<double, 3 * N> const &weights) : H1(H1), R1(R1), Br1(Br1), target(target), weights(weights) {}
+	CeresFunctorPositionAccuracyCost(double const H1, double const R1, double const Br1, std::array<double, 3 * N> const &target, std::array<double, 3 * N> const &weights) : H1(H1), R1(R1), Br1(Br1), target(target), weights(weights) {}
 
    private:
 	bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const override {
 		double const *position = parameters[0];   // x, y, z
 		double const *direction = parameters[1];  // mx, my, mz (unit vector)
-		double const *offset = parameters[2];     // Gx, Gy, Gz
 
-		dipol_model_with_direction_vector(residuals, H1, R1, Br1, position[0], position[1], position[2], direction[0], direction[1], direction[2], offset[0], offset[1], offset[2]);
+		dipol_model_with_direction_vector(residuals, H1, R1, Br1, position[0], position[1], position[2], direction[0], direction[1], direction[2]);
 
 		for (auto i = 0; i < 3 * N; ++i) {
 			residuals[i] = (residuals[i] - target[i]) * weights[i];
@@ -44,7 +43,6 @@ class CeresFunctorDirectionVector : public ceres::SizedCostFunction<3 * N, 3, 3,
 		if (jacobians != nullptr && jacobians[0] != nullptr) {
 			dipol_model_with_direction_vector_jacobian_position(jacobians[0], H1, R1, Br1, position[0], position[1], position[2], direction[0], direction[1], direction[2]);
 			dipol_model_with_direction_vector_jacobian_direction(jacobians[1], H1, R1, Br1, position[0], position[1], position[2]);
-			dipol_model_with_direction_vector_jacobian_offset(jacobians[2]);
 
 			for (auto i = 0; i < 3 * N; ++i) {
 				jacobians[0][i * 3] *= weights[i];
@@ -53,10 +51,38 @@ class CeresFunctorDirectionVector : public ceres::SizedCostFunction<3 * N, 3, 3,
 				jacobians[1][i * 3] *= weights[i];
 				jacobians[1][i * 3 + 1] *= weights[i];
 				jacobians[1][i * 3 + 2] *= weights[i];
-				jacobians[2][i * 3] *= weights[i];
-				jacobians[2][i * 3 + 1] *= weights[i];
-				jacobians[2][i * 3 + 2] *= weights[i];
 			}
+		}
+
+		return true;
+	}
+};
+
+template <std::size_t N>
+class CeresFunctorDirectionConsistencyCost : public ceres::SizedCostFunction<3 * N, 3, 3> {
+	double const H1;
+	double const R1;
+	double const Br1;
+	std::array<double, 3 * N> const &target;
+	std::array<double, 3 * N> const &weights;
+
+   public:
+	CeresFunctorDirectionConsistencyCost(double const H1, double const R1, double const Br1, std::array<double, 3 * N> const &target, std::array<double, 3 * N> const &weights) : H1(H1), R1(R1), Br1(Br1), target(target), weights(weights) {}
+
+   private:
+	bool Evaluate(double const *const *parameters, double *residuals, double **jacobians) const override {
+		double const *position = parameters[0];   // x, y, z
+		double const *direction = parameters[1];  // mx, my, mz (unit vector)
+
+		dipol_model_with_direction_vector(residuals, H1, R1, Br1, position[0], position[1], position[2], direction[0], direction[1], direction[2]);
+
+		for (auto i = 0; i < 3 * N; ++i) {
+			residuals[i] = (residuals[i] - target[i]) * weights[i];
+		}
+
+		if (jacobians != nullptr && jacobians[0] != nullptr) {
+			dipol_model_with_direction_vector_jacobian_position(jacobians[0], H1, R1, Br1, position[0], position[1], position[2], direction[0], direction[1], direction[2]);
+			dipol_model_with_direction_vector_jacobian_direction(jacobians[1], H1, R1, Br1, position[0], position[1], position[2]);
 		}
 
 		return true;
@@ -221,9 +247,8 @@ class CeresOptimizerDirectionVector : virtual protected MagnetSelection {
 
 		std::array<double, 3> position = init_position;
 		std::array<double, 3> direction = init_direction;
-		std::array<double, 3> offset = init_offset;
 
-		do_ceres(position, direction, offset, target, noise_weights);
+		do_ceres(position, direction, target, noise_weights);
 
 		return {position[0], position[1], position[2], direction[0], direction[1], direction[2], data.timestamp, data.src};
 	}
@@ -256,16 +281,13 @@ class CeresOptimizerDirectionVector : virtual protected MagnetSelection {
 		}
 	}
 
-	void do_ceres(std::array<double, 3> &position, std::array<double, 3> &direction, std::array<double, 3> &offset, std::array<double, 3 * N> &target, std::array<double, 3 * N> &weights) {
+	void do_ceres(std::array<double, 3> &position, std::array<double, 3> &direction, std::array<double, 3 * N> &target, std::array<double, 3 * N> &weights) {
 		ceres::Problem problem;
 
-		Magnet const &magnet = MagnetSelection::_magnets[0];
-
-		ceres::CostFunction *cost_function = new CeresFunctorDirectionVector<N>(magnet.H, magnet.R, magnet.Br, target, weights);
+		const auto &[H, R, Br] = MagnetSelection::_magnets[0];
 
 		problem.AddParameterBlock(position.data(), 3);
 		problem.AddParameterBlock(direction.data(), 3, new ceres::SphereManifold<3>());
-		problem.AddParameterBlock(offset.data(), 3);
 
 		problem.SetParameterLowerBound(position.data(), 0, -50e-3);
 		problem.SetParameterUpperBound(position.data(), 0, 200e-3);
@@ -274,7 +296,11 @@ class CeresOptimizerDirectionVector : virtual protected MagnetSelection {
 		problem.SetParameterLowerBound(position.data(), 2, 0);
 		problem.SetParameterUpperBound(position.data(), 2, 300e-3);
 
-		problem.AddResidualBlock(cost_function, new ceres::HuberLoss(1.345), position.data(), direction.data(), offset.data());
+		ceres::CostFunction *cost_function = new CeresFunctorPositionAccuracyCost<N>(H, R, Br, target, weights);
+		ceres::CostFunction *cost_function2 = new CeresFunctorDirectionConsistencyCost<N>(H, R, Br, target, weights);
+
+		problem.AddResidualBlock(cost_function, new ceres::HuberLoss(1.345), position.data(), direction.data());
+		problem.AddResidualBlock(cost_function2, new ceres::SoftLOneLoss(0.1), position.data(), direction.data());
 
 		ceres::Solver::Options const options{.minimizer_progress_to_stdout = false};
 

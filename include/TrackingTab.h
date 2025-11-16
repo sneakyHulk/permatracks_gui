@@ -10,6 +10,7 @@
 #include <implot3d.h>
 
 #include <expected>
+#include <numbers>
 
 #include "Calibration.h"
 #include "CeresOptimizerDirectionVector.h"

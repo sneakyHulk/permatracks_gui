@@ -253,7 +253,7 @@ class CalibrationTab : virtual protected SerialConnection,
 									ImPlot3D::SetupAxisLimits(ImAxis3D_Y, -100e-6, 100e-6, ImGuiCond_Always);
 									ImPlot3D::SetupAxisLimits(ImAxis3D_Z, -100e-6, 100e-6, ImGuiCond_Always);
 
-									static auto ticklabel = [](float const value, char* buff, int const size, void* user_data) { return snprintf(buff, size, "%.2e", value); };
+									static auto ticklabel = [](double const value, char* buff, int const size, void* user_data) { return snprintf(buff, size, "%.2e", value); };
 
 									ImPlot3D::SetupAxisFormat(ImAxis3D_X, ticklabel, nullptr);
 									ImPlot3D::SetupAxisFormat(ImAxis3D_Y, ticklabel, nullptr);
@@ -297,7 +297,7 @@ class CalibrationTab : virtual protected SerialConnection,
 									ImPlot3D::SetupAxisLimits(ImAxis3D_Y, -100e-6, 100e-6, ImGuiCond_Always);
 									ImPlot3D::SetupAxisLimits(ImAxis3D_Z, -100e-6, 100e-6, ImGuiCond_Always);
 
-									static auto ticklabel = [](float const value, char* buff, int const size, void* user_data) { return snprintf(buff, size, "%.2e", value); };
+									static auto ticklabel = [](double const value, char* buff, int const size, void* user_data) { return snprintf(buff, size, "%.2e", value); };
 
 									ImPlot3D::SetupAxisFormat(ImAxis3D_X, ticklabel, nullptr);
 									ImPlot3D::SetupAxisFormat(ImAxis3D_Y, ticklabel, nullptr);

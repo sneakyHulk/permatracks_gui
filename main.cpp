@@ -9,27 +9,6 @@
 #include "App.h"
 #include "SerialConnection.h"
 
-void Demo_ImPlot3D_Scatter() {
-	if (ImPlot3D::BeginPlot("Calibration", {-1, -1})) {
-		// Generate random or computed 3D points
-		static std::vector<double> xs, ys, zs;
-		if (xs.empty()) {
-			int count = 200;
-			xs.resize(count);
-			ys.resize(count);
-			zs.resize(count);
-			for (int i = 0; i < count; ++i) {
-				xs[i] = 2.0 * (rand() / (double)RAND_MAX - 0.5);
-				ys[i] = 2.0 * (rand() / (double)RAND_MAX - 0.5);
-				zs[i] = std::sin(xs[i] * 3.0) * std::cos(ys[i] * 3.0);
-			}
-		}
-
-		ImPlot3D::PlotScatter("Points", xs.data(), ys.data(), zs.data(), (int)xs.size());
-		ImPlot3D::EndPlot();
-	}
-}
-
 int main(int, char**) {
 	App app;
 
@@ -40,6 +19,11 @@ int main(int, char**) {
 	params.appWindowParams.windowGeometry.size = {1024, 720};
 	params.appWindowParams.windowGeometry.positionMode = HelloImGui::WindowPositionMode::MonitorCenter;
 	params.appWindowParams.windowGeometry.monitorIdx = 0;
+
+	params.callbacks.LoadAdditionalFonts = []() {
+		ImGuiIO& io = ImGui::GetIO();
+		io.FontDefault = io.Fonts->AddFontFromFileTTF((std::filesystem::path(CMAKE_SOURCE_DIR) / "fonts" / "RobotoMono-VariableFont_wght.ttf").c_str(), 24.0f);
+	};
 
 	params.appWindowParams.restorePreviousGeometry = true;
 

@@ -160,12 +160,9 @@ class ConnectionTab : virtual protected SerialConnection {
 
    private:
 	void render_table() {
-		if (ImGui::Button("Refresh Serial Device List")) {
+		if (ImGui::Button("Refresh")) {
 			refresh();
 		}
-
-		ImGui::SameLine();
-		ImGui::Text("Found %zu serial devices", devices.size());
 
 		ImGui::SameLine();
 		ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("Connect").x - ImGui::GetStyle().FramePadding.x * 2);
@@ -222,8 +219,8 @@ class ConnectionTab : virtual protected SerialConnection {
 		}
 
 		ImGui::SameLine();
-		ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("Connect").x - ImGui::CalcTextSize("Tap").x - 150 - ImGui::CalcTextSize("Select Baud Rate:").x - ImGui::GetStyle().FramePadding.x * 8);
-		ImGui::Text("Select Baud Rate:");
+		ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("Connect").x - ImGui::CalcTextSize("Tap").x - 150 - ImGui::CalcTextSize("Baud Rate:").x - ImGui::GetStyle().FramePadding.x * 8);
+		ImGui::Text("Baud Rate:");
 
 		if (ImGui::BeginTable("SerialPortsTable", 6, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_ScrollY | ImGuiTableFlags_SizingStretchProp)) {
 			ImGui::TableSetupScrollFreeze(0, 1);  // freeze header

@@ -12,6 +12,7 @@
 
 class App final : protected MainTabBar {
    public:
+	App() = default;
 	void render() { MainTabBar::render(); }
 
 	~App() = default;

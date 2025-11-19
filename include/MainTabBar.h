@@ -51,6 +51,8 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 			}
 
 			ImGui::EndTabItem();
+		} else {
+			CalibrationTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Zeroing", nullptr, previous_active_tab == "Zeroing" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -61,6 +63,8 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 			}
 
 			ImGui::EndTabItem();
+		} else {
+			ZeroingTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Magnet Selection", nullptr, previous_active_tab == "Magnet Selection" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -81,6 +85,8 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 			}
 
 			ImGui::EndTabItem();
+		} else {
+			TrackingTab::stop_thread();
 		}
 
 		ImGui::EndTabBar();

@@ -8,13 +8,8 @@
 #include <ranges>
 #include <so3.hpp>
 
-template <typename Tuple>
-auto zip_from_tuple(Tuple&& tup) {
-	return std::apply([](auto&&... args) { return std::views::zip(std::forward<decltype(args)>(args)...); }, std::forward<Tuple>(tup));
-}
-
 template <std::size_t N>
-class Zeroing : protected virtual Calibration<N> {
+class Zeroing {
 	bool _zeroed = false;
 
    protected:
@@ -26,7 +21,7 @@ class Zeroing : protected virtual Calibration<N> {
 	~Zeroing() = default;
 
 	void zero(std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, N> const& zeroing_data) {
-		for (auto const& [calibration, zeroing, earth_rotation, sensor_zeroing_data] : std::ranges::views::zip(Calibration<N>::_calibrations, _zeroings, _earth_rotations, zeroing_data)) {
+		for (auto const& [zeroing, earth_rotation, sensor_zeroing_data] : std::ranges::views::zip(_zeroings, _earth_rotations, zeroing_data)) {
 			// calculate mean of applied calibration zeroing data
 			auto const& [x, y, z] = sensor_zeroing_data;
 			zeroing(0) = std::accumulate(x.begin(), x.end(), 0.0) / x.size();

@@ -11,7 +11,7 @@ class Calibration {
 	bool _calibrated = false;
 
    protected:
-	std::array<std::tuple<Eigen::Matrix<double, 3, 3>, Eigen::Vector<double, 3>>, N> _calibrations;
+	std::array<EllipsoidFitResult, N> _calibrations;
 
    public:
 	Calibration() { std::cout << "Calibration()" << std::endl; }

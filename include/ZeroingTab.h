@@ -50,39 +50,48 @@ class ZeroingTab : virtual protected SerialConnection,
 				while (true) {
 					auto current_state = state.load();
 
-					if (auto points = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); points.has_value()) {
+					if (auto magnetometer_data = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); magnetometer_data.has_value()) {
+						for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetometer_data.value())) {
+							Eigen::Vector<double, 3> tmp;
+							tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+
+							tmp = calibration.transformation * (tmp - calibration.center);
+							magnetometer_datapoint.x = tmp.x();
+							magnetometer_datapoint.y = tmp.y();
+							magnetometer_datapoint.z = tmp.z();
+						}
+
 						if (current_state == ZeroingTabState::PLOTTING) {
-							for (auto const& [point, xyz] : std::ranges::views::zip(points.value(), current_plotting_data)) {
+							for (auto const& [magnetometer_datapoint, xyz] : std::ranges::views::zip(magnetometer_data.value(), current_plotting_data)) {
 								auto& [x, y, z] = xyz;
 
 								std::move_backward(x.begin(), x.end() - 1, x.end());
 								std::move_backward(y.begin(), y.end() - 1, y.end());
 								std::move_backward(z.begin(), z.end() - 1, z.end());
 
-								x.front() = point.x;
-								y.front() = point.y;
-								z.front() = point.z;
+								x.front() = magnetometer_datapoint.x;
+								y.front() = magnetometer_datapoint.y;
+								z.front() = magnetometer_datapoint.z;
 							}
 
 							std::atomic_store(&plot_data, std::make_shared<decltype(current_plotting_data)>(current_plotting_data));
 							continue;
 						}
 						if (current_state == ZeroingTabState::ZEROING) {
-							for (auto const& [point, xyz] : std::ranges::views::zip(points.value(), current_zeroing_data)) {
+							for (auto const& [magnetometer_datapoint, xyz] : std::ranges::views::zip(magnetometer_data.value(), current_zeroing_data)) {
 								auto& [x, y, z] = xyz;
 
-								x.push_back(point.x);
-								y.push_back(point.y);
-								z.push_back(point.z);
+								x.push_back(magnetometer_datapoint.x);
+								y.push_back(magnetometer_datapoint.y);
+								z.push_back(magnetometer_datapoint.z);
 							}
 
 							std::atomic_store(&zeroing_data, std::make_shared<decltype(current_zeroing_data)>(current_zeroing_data));
-
 							continue;
 						}
 					} else {
 						if (SerialConnection::connected()) {
-							error_message = points.error().what();
+							error_message = magnetometer_data.error().what();
 							SerialConnection::close_serial_port();
 
 							error.store(true);

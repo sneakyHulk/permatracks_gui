@@ -4,11 +4,13 @@
 // This is necessary
 
 #include <ImGuizmo.h>
+#include <__filesystem/filesystem_error.h>
 
 #include <expected>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <numbers>
 #include <ranges>
 
 enum class ProjectError {
@@ -78,7 +80,6 @@ void DrawShadedFace(std::array<glm::vec3, 4>&& corners, const glm::vec3& normal,
     float const edgeThickness = 1.5f) {
 	ImDrawList* dl = ImGui::GetWindowDrawList();
 
-	// Shade Based On Normal
 	ImU32 const shadedColor = ShadeFace(view, normal, baseColor);
 
 	std::array<ImVec2, 4> pts;
@@ -123,24 +124,128 @@ void DrawCylinderFaces(const glm::mat4& view, glm::vec3 const& camPos, const glm
 		glm::vec3 const b0 = bottomCenter + radius * (right * std::cos(a0) + forward * std::sin(a0));
 		glm::vec3 const b1 = bottomCenter + radius * (right * std::cos(a1) + forward * std::sin(a1));
 
-		// --- SIDE FACES ---
+		// SIDE FACES:
 		glm::vec3 const normal = normalize(cross(t1 - t0, b0 - t0));
 		glm::vec3 const faceCenter = (t0 + t1 + b0 + b1) * 0.25f;
 		if (glm::vec3 const viewDir = glm::normalize(camPos - faceCenter); glm::dot(normal, -viewDir) > 0.0f) {
 			DrawShadedFace({b0, b1, t1, t0}, normal, view, proj, rectPos, rectSize, sideColor);
 		}
 
-		// --- TOP FACE ---
+		// TOP FACE:
 		if (glm::vec3 const viewDir = glm::normalize(camPos - topCenter); glm::dot(up, viewDir) > 0.0f) {
 			DrawShadedFace({topCenter, t0, t1, topCenter}, -up, view, proj, rectPos, rectSize, topColor);
 		}
 
-		// --- BOTTOM FACE ---
+		// BOTTOM:
 		if (glm::vec3 const viewDir = glm::normalize(camPos - bottomCenter); glm::dot(-up, viewDir) > 0.0f) {
 			DrawShadedFace({bottomCenter, b1, b0, bottomCenter}, up, view, proj, rectPos, rectSize, bottomColor);
 		}
 	}
 }
+
+#include <assimp/postprocess.h>
+#include <assimp/scene.h>
+
+#include <assimp/Importer.hpp>
+
+struct StlTriangle {
+	glm::vec3 v0;
+	glm::vec3 v1;
+	glm::vec3 v2;
+	glm::vec3 normal;
+};
+
+void DrawStlTriangle(const StlTriangle& tri, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor, ImU32 edgeColor = IM_COL32(0, 0, 0, 255), float edgeThickness = 1.0f) {
+	auto s0 = ProjectPoint(tri.v0, view, proj, rectPos, rectSize);
+	auto s1 = ProjectPoint(tri.v1, view, proj, rectPos, rectSize);
+	auto s2 = ProjectPoint(tri.v2, view, proj, rectPos, rectSize);
+
+	if (!s0 || !s1 || !s2) return;  // at least one vertex not visible / behind camera
+
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+
+	ImVec2 pts[3] = {s0.value(), s1.value(), s2.value()};
+
+	// Normal: use file normal if non-zero, else recalc
+	glm::vec3 n = tri.normal;
+	if (glm::length(n) < 1e-6f)
+		n = glm::normalize(glm::cross(tri.v1 - tri.v0, tri.v2 - tri.v0));
+	else
+		n = glm::normalize(n);
+
+	ImU32 shaded = ShadeFace(view, n, baseColor);
+
+	dl->AddConvexPolyFilled(pts, 3, shaded);
+	dl->AddPolyline(pts, 3, edgeColor, ImDrawFlags_Closed, edgeThickness);
+}
+
+void DrawStlMesh(const std::vector<StlTriangle>& tris, const glm::mat4& view, const glm::mat4& proj, const glm::vec3& camPos, const ImVec2& rectPos, const ImVec2& rectSize) {
+	for (auto const& t : tris) {
+		DrawStlTriangle(t, view, proj, rectPos, rectSize, IM_COL32(200, 200, 255, 255), IM_COL32(20, 20, 20, 255), 1.0f);
+	}
+}
+
+glm::vec3 ComputeMeshCenter(const aiMesh* mesh) {
+	glm::vec3 minv(FLT_MAX);
+	glm::vec3 maxv(-FLT_MAX);
+
+	for (unsigned i = 0; i < mesh->mNumVertices; ++i) {
+		aiVector3D v = mesh->mVertices[i];
+		minv.x = std::min(minv.x, v.x);
+		minv.y = std::min(minv.y, v.y);
+		minv.z = std::min(minv.z, v.z);
+
+		maxv.x = std::max(maxv.x, v.x);
+		maxv.y = std::max(maxv.y, v.y);
+		maxv.z = std::max(maxv.z, v.z);
+	}
+
+	return (minv + maxv) * 0.5f;
+}
+
+void CenterMesh(aiMesh* mesh) {
+	glm::vec3 center = ComputeMeshCenter(mesh);
+
+	for (unsigned i = 0; i < mesh->mNumVertices; ++i) {
+		mesh->mVertices[i].x -= center.x;
+		mesh->mVertices[i].y -= center.y;
+		mesh->mVertices[i].z -= center.z;
+	}
+}
+
+std::vector<StlTriangle> LoadStlAssimp(const std::string& filename) {
+	Assimp::Importer importer;
+
+	const aiScene* scene = importer.ReadFile(filename, aiProcess_Triangulate | aiProcess_GenNormals | aiProcess_JoinIdenticalVertices);
+
+	if (!scene || !scene->HasMeshes()) return {};
+
+	std::vector<StlTriangle> tris;
+
+	for (unsigned m = 0; m < scene->mNumMeshes; ++m) {
+		aiMesh* mesh = scene->mMeshes[m];
+
+		// 🟢 STL zentrieren
+		CenterMesh(mesh);
+
+		for (unsigned f = 0; f < mesh->mNumFaces; ++f) {
+			const aiFace& face = mesh->mFaces[f];
+			if (face.mNumIndices != 3) continue;
+
+			aiVector3D a = mesh->mVertices[face.mIndices[0]];
+			aiVector3D b = mesh->mVertices[face.mIndices[1]];
+			aiVector3D c = mesh->mVertices[face.mIndices[2]];
+
+			aiVector3D n = mesh->mNormals[face.mIndices[0]];
+
+			tris.push_back({glm::vec3(a.x, a.y, a.z), glm::vec3(b.x, b.y, b.z), glm::vec3(c.x, c.y, c.z), glm::normalize(glm::vec3(n.x, n.y, n.z))});
+		}
+	}
+
+	return tris;
+}
+
+inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 void AppGui() {
 	if (ImGui::BeginTabBar("MainTabs")) {
@@ -150,19 +255,19 @@ void AppGui() {
 				static constexpr float speed = 5.f;
 				static constexpr float orbit_speed = 0.01f;
 
+				static auto stl = LoadStlAssimp(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "OBJ_PCB_MAGNETOMETER_ARRAY_V1.obj");
+
 				static glm::vec3 camPos(4.0f, 10.0f, 5.0f);
 				static float yaw = glm::radians(-135.0f);
 				static float pitch = glm::radians(-45.0f);
 				static glm::vec3 position = {0.0f, 0.0f, 0.0f};
 				static glm::vec3 direction = {0.0f, 0.0f, 1.0f};
 
-				// Get window rectangle in screen space
 				ImVec2 const winPos = ImGui::GetCursorScreenPos();
 				ImVec2 const winSize = ImGui::GetContentRegionAvail();
 				ImGuiIO const& io = ImGui::GetIO();
 				auto const dt = io.DeltaTime;
 
-				ImGuizmo::BeginFrame();
 				if (ImGui::IsWindowHovered()) {
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
 						yaw += io.MouseDelta.x * orbit_speed;
@@ -197,14 +302,17 @@ void AppGui() {
 				glm::mat4 proj = glm::perspective(glm::radians(90.0f), winSize.x / winSize.y, 0.1f, 100.0f);
 
 				// Tell ImGuizmo where to draw
+				ImGuizmo::BeginFrame();
 				ImGuizmo::SetDrawlist();
 				ImGuizmo::SetRect(winPos.x, winPos.y, winSize.x, winSize.y);
 
 				glm::mat4 model(1.0f);
+				// DrawStlMesh(stl, view, proj, camPos, winPos, winSize);
+
 				ImGuizmo::DrawGrid(glm::value_ptr(view), glm::value_ptr(proj), glm::value_ptr(model), 10.0f);
-				DrawDirectionArrow(view, camPos, proj, position, direction, winPos, winSize);
+				DrawDirectionArrow(view, camPos, proj, to_imgui(position), to_imgui(direction), winPos, winSize);
 				// DrawCylinder(view, proj, position, direction, 0.4f, 0.5f, winPos, winSize);
-				DrawCylinderFaces(view, camPos, proj, position, direction, 0.4f, 0.5f, winPos, winSize);
+				DrawCylinderFaces(view, camPos, proj, to_imgui(position), to_imgui(direction), 0.4f, 0.5f, winPos, winSize);
 
 				// glm::vec3 f = glm::normalize(direction);
 				// glm::vec3 u = glm::vec3(0, 1, 0);

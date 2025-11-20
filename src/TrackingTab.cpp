@@ -1,161 +1,121 @@
 #include "TrackingTab.h"
-#include <numbers>
 
-void Frustum(float left, float right, float bottom, float top, float znear, float zfar, float* m16) {
-	float temp, temp2, temp3, temp4;
-	temp = 2.0f * znear;
-	temp2 = right - left;
-	temp3 = top - bottom;
-	temp4 = zfar - znear;
-	m16[0] = temp / temp2;
-	m16[1] = 0.0f;
-	m16[2] = 0.0f;
-	m16[3] = 0.0f;
-	m16[4] = 0.0f;
-	m16[5] = temp / temp3;
-	m16[6] = 0.0f;
-	m16[7] = 0.0f;
-	m16[8] = (right + left) / temp2;
-	m16[9] = (top + bottom) / temp3;
-	m16[10] = (-zfar - znear) / temp4;
-	m16[11] = -1.0f;
-	m16[12] = 0.0;
-	m16[13] = 0.0;
-	m16[14] = (-temp * zfar) / temp4;
-	m16[15] = 0.0;
+#include <numbers>
+std::expected<ImVec2, ProjectError> ProjectPoint(const glm::vec3& p, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize) {
+	glm::vec4 clip = proj * view * glm::vec4(p, 1.0f);
+
+	if (clip.w == 0.0f) return std::unexpected(ProjectError::ZeroW);
+	if (clip.w < 0.0f) return std::unexpected(ProjectError::BehindCamera);
+
+	clip /= clip.w;
+
+	if (clip.x < -1.0f || clip.x > 1.0f || clip.y < -1.0f || clip.y > 1.0f || clip.z < -1.0f || clip.z > 1.0f) {
+		return std::unexpected(ProjectError::OutsideFrustum);
+	}
+
+	float const x = rectPos.x + (clip.x * 0.5f + 0.5f) * rectSize.x;
+	float const y = rectPos.y + (clip.y * -0.5f + 0.5f) * rectSize.y;
+
+	return ImVec2(x, y);
 }
-void Perspective(float fovyInDegrees, float aspectRatio, float znear, float zfar, float* m16) {
-	float ymax, xmax;
-	ymax = znear * tanf(fovyInDegrees * 3.141592f / 180.0f);
-	xmax = ymax * aspectRatio;
-	Frustum(-xmax, xmax, -ymax, ymax, znear, zfar, m16);
+void DrawDirectionArrow(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& origin, const glm::vec3& direction, const ImVec2& rectPos, const ImVec2& rectSize) {
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+
+	glm::vec3 const p0 = origin;
+	glm::vec3 const p1 = origin + glm::normalize(direction) * 1.5f;
+
+	auto const a = ProjectPoint(p0, view, proj, rectPos, rectSize);
+	auto const b = ProjectPoint(p1, view, proj, rectPos, rectSize);
+
+	if (a.has_value() && b.has_value()) dl->AddLine(a.value(), b.value(), IM_COL32(255, 50, 50, 255), 3.0f);
+
+	// Arrow tip
+	glm::vec3 const f = glm::normalize(direction);
+	glm::vec3 const up(0, 1, 0);
+	glm::vec3 const side = glm::normalize(glm::cross(f, up));
+	glm::vec3 const tipL = p1 - f * 0.2f + side * 0.15f;
+	glm::vec3 const tipR = p1 - f * 0.2f - side * 0.15f;
+
+	auto const sL = ProjectPoint(tipL, view, proj, rectPos, rectSize);
+	auto const sR = ProjectPoint(tipR, view, proj, rectPos, rectSize);
+
+	if (b.has_value() && sL.has_value()) dl->AddLine(b.value(), sL.value(), IM_COL32(255, 50, 50, 255), 3.0f);
+	if (b.has_value() && sR.has_value()) dl->AddLine(b.value(), sR.value(), IM_COL32(255, 50, 50, 255), 3.0f);
 }
-void Cross(const float* a, const float* b, float* r) {
-	r[0] = a[1] * b[2] - a[2] * b[1];
-	r[1] = a[2] * b[0] - a[0] * b[2];
-	r[2] = a[0] * b[1] - a[1] * b[0];
+ImU32 ShadeFace(const glm::mat4& view, const glm::vec3& normal, ImU32 baseColor) {
+	glm::vec3 const lightWorld = glm::normalize(glm::vec3(0.0f, -1.0f, 0.0f));
+
+	float d = glm::dot(glm::normalize(normal), lightWorld);
+	d = glm::clamp(d * 0.5f + 0.5f, 0.1f, 1.0f);  // restrict contrast
+
+	ImVec4 c = ImGui::ColorConvertU32ToFloat4(baseColor);
+	c.x *= d;
+	c.y *= d;
+	c.z *= d;
+
+	return ImGui::ColorConvertFloat4ToU32(c);
 }
-float Dot(const float* a, const float* b) { return a[0] * b[0] + a[1] * b[1] + a[2] * b[2]; }
-void Normalize(const float* a, float* r) {
-	float il = 1.f / (sqrtf(Dot(a, a)) + FLT_EPSILON);
-	r[0] = a[0] * il;
-	r[1] = a[1] * il;
-	r[2] = a[2] * il;
-}
-void MultiplyMatrix(const float* a, const float* b, float* result) {
-	for (int row = 0; row < 4; row++) {
-		for (int col = 0; col < 4; col++) {
-			result[col + row * 4] = a[row * 4 + 0] * b[col + 0] + a[row * 4 + 1] * b[col + 4] + a[row * 4 + 2] * b[col + 8] + a[row * 4 + 3] * b[col + 12];
+void DrawShadedFace(std::array<glm::vec3, 4>&& corners, const glm::vec3& normal, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor, ImU32 edgeColor, float const edgeThickness) {
+	ImDrawList* dl = ImGui::GetWindowDrawList();
+
+	ImU32 const shadedColor = ShadeFace(view, normal, baseColor);
+
+	std::array<ImVec2, 4> pts;
+	for (auto const& [pt, corner] : std::ranges::views::zip(pts, corners)) {
+		if (auto p = ProjectPoint(corner, view, proj, rectPos, rectSize)) {
+			pt = p.value();
+		} else {
+			return;
 		}
 	}
+
+	// Fill
+	dl->AddConvexPolyFilled(pts.data(), 4, shadedColor);
+
+	// Outline
+	for (int i = 0; i < 4; i++) dl->AddLine(pts[i], pts[(i + 1) % 4], edgeColor, edgeThickness);
 }
-void LookAt(const float* eye, const float* at, const float* up, float* m16) {
-	float X[3], Y[3], Z[3], tmp[3];
+void DrawCylinderFaces(const glm::mat4& view, glm::vec3 const& camPos, const glm::mat4& proj, const glm::vec3& center, const glm::vec3& axis, float radius, float height, const ImVec2& rectPos, const ImVec2& rectSize) {
+	constexpr int segments = 32;
+	constexpr ImU32 topColor = IM_COL32(200, 200, 255, 255);
+	constexpr ImU32 bottomColor = IM_COL32(200, 255, 200, 255);
+	constexpr ImU32 sideColor = IM_COL32(255, 200, 200, 255);
 
-	tmp[0] = eye[0] - at[0];
-	tmp[1] = eye[1] - at[1];
-	tmp[2] = eye[2] - at[2];
-	Normalize(tmp, Z);
-	Normalize(up, Y);
+	glm::vec3 const up = normalize(axis);
+	glm::vec3 const tmp = (fabs(up.y) < 0.99f ? glm::vec3(0, 1, 0) : glm::vec3(1, 0, 0));
 
-	Cross(Y, Z, tmp);
-	Normalize(tmp, X);
+	glm::vec3 const right = normalize(cross(tmp, up));
+	glm::vec3 const forward = normalize(cross(up, right));
 
-	Cross(Z, X, tmp);
-	Normalize(tmp, Y);
+	float const h = height * 0.5f;
 
-	m16[0] = X[0];
-	m16[1] = Y[0];
-	m16[2] = Z[0];
-	m16[3] = 0.0f;
-	m16[4] = X[1];
-	m16[5] = Y[1];
-	m16[6] = Z[1];
-	m16[7] = 0.0f;
-	m16[8] = X[2];
-	m16[9] = Y[2];
-	m16[10] = Z[2];
-	m16[11] = 0.0f;
-	m16[12] = -Dot(X, eye);
-	m16[13] = -Dot(Y, eye);
-	m16[14] = -Dot(Z, eye);
-	m16[15] = 1.0f;
-}
-bool InvertMatrix(const float m[16], float invOut[16]) {
-	float inv[16];
-	inv[0] = m[5] * m[10] * m[15] - m[5] * m[11] * m[14] - m[9] * m[6] * m[15] + m[9] * m[7] * m[14] + m[13] * m[6] * m[11] - m[13] * m[7] * m[10];
-	inv[4] = -m[4] * m[10] * m[15] + m[4] * m[11] * m[14] + m[8] * m[6] * m[15] - m[8] * m[7] * m[14] - m[12] * m[6] * m[11] + m[12] * m[7] * m[10];
-	inv[8] = m[4] * m[9] * m[15] - m[4] * m[11] * m[13] - m[8] * m[5] * m[15] + m[8] * m[7] * m[13] + m[12] * m[5] * m[11] - m[12] * m[7] * m[9];
-	inv[12] = -m[4] * m[9] * m[14] + m[4] * m[10] * m[13] + m[8] * m[5] * m[14] - m[8] * m[6] * m[13] - m[12] * m[5] * m[10] + m[12] * m[6] * m[9];
-	inv[1] = -m[1] * m[10] * m[15] + m[1] * m[11] * m[14] + m[9] * m[2] * m[15] - m[9] * m[3] * m[14] - m[13] * m[2] * m[11] + m[13] * m[3] * m[10];
-	inv[5] = m[0] * m[10] * m[15] - m[0] * m[11] * m[14] - m[8] * m[2] * m[15] + m[8] * m[3] * m[14] + m[12] * m[2] * m[11] - m[12] * m[3] * m[10];
-	inv[9] = -m[0] * m[9] * m[15] + m[0] * m[11] * m[13] + m[8] * m[1] * m[15] - m[8] * m[3] * m[13] - m[12] * m[1] * m[11] + m[12] * m[3] * m[9];
-	inv[13] = m[0] * m[9] * m[14] - m[0] * m[10] * m[13] - m[8] * m[1] * m[14] + m[8] * m[2] * m[13] + m[12] * m[1] * m[10] - m[12] * m[2] * m[9];
-	inv[2] = m[1] * m[6] * m[15] - m[1] * m[7] * m[14] - m[5] * m[2] * m[15] + m[5] * m[3] * m[14] + m[13] * m[2] * m[7] - m[13] * m[3] * m[6];
-	inv[6] = -m[0] * m[6] * m[15] + m[0] * m[7] * m[14] + m[4] * m[2] * m[15] - m[4] * m[3] * m[14] - m[12] * m[2] * m[7] + m[12] * m[3] * m[6];
-	inv[10] = m[0] * m[5] * m[15] - m[0] * m[7] * m[13] - m[4] * m[1] * m[15] + m[4] * m[3] * m[13] + m[12] * m[1] * m[7] - m[12] * m[3] * m[5];
-	inv[14] = -m[0] * m[5] * m[14] + m[0] * m[6] * m[13] + m[4] * m[1] * m[14] - m[4] * m[2] * m[13] - m[12] * m[1] * m[6] + m[12] * m[2] * m[5];
-	inv[3] = -m[1] * m[6] * m[15] + m[1] * m[7] * m[14] + m[5] * m[2] * m[15] - m[5] * m[3] * m[14] - m[9] * m[2] * m[7] + m[9] * m[3] * m[6];
-	inv[7] = m[0] * m[6] * m[15] - m[0] * m[7] * m[14] - m[4] * m[2] * m[15] + m[4] * m[3] * m[14] + m[8] * m[2] * m[7] - m[8] * m[3] * m[6];
-	inv[11] = -m[0] * m[5] * m[15] + m[0] * m[7] * m[13] + m[4] * m[1] * m[15] - m[4] * m[3] * m[13] - m[8] * m[1] * m[7] + m[8] * m[3] * m[5];
-	inv[15] = m[0] * m[5] * m[14] - m[0] * m[6] * m[13] - m[4] * m[1] * m[14] + m[4] * m[2] * m[13] + m[8] * m[1] * m[6] - m[8] * m[2] * m[5];
-	float det = m[0] * inv[0] + m[1] * inv[4] + m[2] * inv[8] + m[3] * inv[12];
-	if (det == 0) return false;
-	det = 1.0f / det;
-	for (auto i = 0; i < 16; i++) invOut[i] = inv[i] * det;
-	return true;
-}
-void ExtractDirectionFromViewMatrix(const float* view, Vec3& forward, Vec3& right, Vec3& up) {
-	right = Vec3(view[0], view[4], view[8]);
-	up = Vec3(view[1], view[5], view[9]);
-	forward = Vec3(-view[2], -view[6], -view[10]);  // negative Z
-}
-Vec3 ExtractPositionFromViewMatrix(float const* view) {
-	float inv[16];
-	InvertMatrix(view, inv);
-	return Vec3(inv[12], inv[13], inv[14]);
-}
-Vec3 ExtractForwardFromViewMatrix(float const* view) {
-	// forward is the -Z axis of the camera
-	Vec3 f(-view[2], -view[6], -view[10]);
-	Normalize(&f.x, &f.x);
-	return f;
-}
-std::tuple<float, float> ExtractAnglesFromForwardSafe(Vec3 const& forward) {
-	// pitch: clamp because asin(±1) is valid, but later tan() or cos() becomes unstable
-	float pitch = -asin(std::clamp(forward.y, -0.9999f, 0.9999f));
+	glm::vec3 const topCenter = center + up * h;
+	glm::vec3 const bottomCenter = center - up * h;
 
-	float yaw = atan2(forward.x, forward.z);
+	for (int i = 0; i < segments; i++) {
+		float const a0 = static_cast<float>(i) / segments * 2.f * std::numbers::pi_v<float>;
+		float const a1 = static_cast<float>(i + 1) / segments * 2.f * std::numbers::pi_v<float>;
 
-	return {pitch, yaw};
-}
-void TransformPoint(const float* m, const float in[3], float out[4]) {
-	const float x = in[0];
-	const float y = in[1];
-	const float z = in[2];
+		glm::vec3 const t0 = topCenter + radius * (right * std::cos(a0) + forward * std::sin(a0));
+		glm::vec3 const t1 = topCenter + radius * (right * std::cos(a1) + forward * std::sin(a1));
+		glm::vec3 const b0 = bottomCenter + radius * (right * std::cos(a0) + forward * std::sin(a0));
+		glm::vec3 const b1 = bottomCenter + radius * (right * std::cos(a1) + forward * std::sin(a1));
 
-	out[0] = m[0] * x + m[4] * y + m[8] * z + m[12];
-	out[1] = m[1] * x + m[5] * y + m[9] * z + m[13];
-	out[2] = m[2] * x + m[6] * y + m[10] * z + m[14];
-	out[3] = m[3] * x + m[7] * y + m[11] * z + m[15];
-}
-ImVec2 ProjectToScreen(const float* view, const float* proj, const float* model, const float local[3], const ImVec2& viewportMin, const ImVec2& viewportSize) {
-	float world[4];
-	TransformPoint(model, local, world);
+		// SIDE FACES:
+		glm::vec3 const normal = normalize(cross(t1 - t0, b0 - t0));
+		glm::vec3 const faceCenter = (t0 + t1 + b0 + b1) * 0.25f;
+		if (glm::vec3 const viewDir = glm::normalize(camPos - faceCenter); glm::dot(normal, -viewDir) > 0.0f) {
+			DrawShadedFace({b0, b1, t1, t0}, normal, view, proj, rectPos, rectSize, sideColor);
+		}
 
-	float viewPos[4];
-	TransformPoint(view, world, viewPos);
+		// TOP FACE:
+		if (glm::vec3 const viewDir = glm::normalize(camPos - topCenter); glm::dot(up, viewDir) > 0.0f) {
+			DrawShadedFace({topCenter, t0, t1, topCenter}, -up, view, proj, rectPos, rectSize, topColor);
+		}
 
-	float clip[4];
-	TransformPoint(proj, viewPos, clip);
-
-	if (clip[3] == 0.0f) clip[3] = 1e-6f;
-
-	float const ndcX = clip[0] / clip[3];
-	float const ndcY = clip[1] / clip[3];
-
-	float const sx = viewportMin.x + (ndcX * 0.5f + 0.5f) * viewportSize.x;
-	float const sy = viewportMin.y + (-ndcY * 0.5f + 0.5f) * viewportSize.y;  // flip Y
-
-	return {sx, sy};
+		// BOTTOM:
+		if (glm::vec3 const viewDir = glm::normalize(camPos - bottomCenter); glm::dot(-up, viewDir) > 0.0f) {
+			DrawShadedFace({bottomCenter, b1, b0, bottomCenter}, up, view, proj, rectPos, rectSize, bottomColor);
+		}
+	}
 }

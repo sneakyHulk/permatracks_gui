@@ -1,5 +1,5 @@
 #include "ellipsoid_fit.h"
-std::tuple<Eigen::Matrix<double, 3, 3>, Eigen::Vector<double, 3>> ellipsoid_fit(std::vector<double> const& x, std::vector<double> const& y, std::vector<double> const& z) {
+std::tuple<Eigen::Matrix<double, 3, 3>, Eigen::Vector<double, 3>> ellipsoid_fit2(std::vector<double> const& x, std::vector<double> const& y, std::vector<double> const& z) {
 	auto points = std::ranges::views::zip(x, y, z);
 
 	Eigen::Matrix<double, 10, Eigen::Dynamic> D;  // = Eigen::Matrix<double, 10, Eigen::Dynamic>::Zero(10, points.size());
@@ -61,4 +61,69 @@ std::tuple<Eigen::Matrix<double, 3, 3>, Eigen::Vector<double, 3>> ellipsoid_fit(
 	Eigen::Matrix<double, 3, 3> const SQ = solver2.eigenvectors().real() * D2 * solver2.eigenvectors().real().transpose();
 
 	return {SQ * 47.9751 * 1e-6, B};
+}
+EllipsoidFitResult ellipsoid_fit(std::vector<double> const& x, std::vector<double> const& y, std::vector<double> const& z) {
+	auto points = std::ranges::views::zip(x, y, z);
+
+	Eigen::Matrix<double, 9, Eigen::Dynamic> D{9, points.size()};
+	Eigen::Vector<double, Eigen::Dynamic> d2(points.size());
+
+	for (auto i = 0; auto const& [xi, yi, zi] : points) {
+		D(0, i) = xi * xi + yi * yi - 2 * zi * zi;
+		D(1, i) = xi * xi + zi * zi - 2 * yi * yi;
+		D(2, i) = 2 * xi * yi;
+		D(3, i) = 2 * xi * zi;
+		D(4, i) = 2 * yi * zi;
+		D(5, i) = 2 * xi;
+		D(6, i) = 2 * yi;
+		D(7, i) = 2 * zi;
+		D(8, i) = 1;
+
+		d2(i) = xi * xi + yi * yi + zi * zi;
+
+		++i;
+	}
+
+	Eigen::Matrix<double, 9, 9> const DDt = D * D.transpose();
+	Eigen::Vector<double, 9> const u = DDt.ldlt().solve(D * d2);
+
+	double const a = u(0) + u(1) - 1;
+	double const b = u(0) - 2 * u(1) - 1;
+	double const c = u(1) - 2 * u(0) - 1;
+
+	Eigen::Vector<double, 10> v;
+	v << a, b, c, u.segment<7>(2);
+
+	Eigen::Matrix4d A;
+	A << v(0), v(3), v(4), v(6), v(3), v(1), v(5), v(7), v(4), v(5), v(2), v(8), v(6), v(7), v(8), v(9);
+
+	Eigen::Matrix<double, 3, 3> const A3 = A.block<3, 3>(0, 0);
+	Eigen::Vector<double, 3> const bv = v.segment<3>(6);
+	Eigen::Vector<double, 3> const center = (-A3).ldlt().solve(bv);
+
+	Eigen::Matrix<double, 4, 4> T = Eigen::Matrix4d::Identity();
+	T.block<1, 3>(3, 0) = center.transpose();
+
+	Eigen::Matrix<double, 4, 4> R = T * A * T.transpose();
+
+	Eigen::Matrix<double, 3, 3> R3 = R.block<3, 3>(0, 0) / (-R(3, 3));
+
+	Eigen::SelfAdjointEigenSolver<Eigen::Matrix3d> solver(R3);
+	Eigen::Vector<double, 3> evals = solver.eigenvalues();
+	Eigen::Matrix<double, 3, 3> evecs = solver.eigenvectors().transpose();
+
+	Eigen::Vector<double, 3> radii;
+	for (int i = 0; i < 3; ++i) {
+		radii(i) = std::sqrt(1.0 / std::abs(evals(i)));
+		radii(i) *= (evals(i) > 0 ? 1.0 : -1.0);
+	}
+
+	double r = std::cbrt(radii(0) * radii(1) * radii(2));
+
+	Eigen::Matrix<double, 3, 3> S = Eigen::Matrix<double, 3, 3>::Zero();
+	S.diagonal() << r / radii(0), r / radii(1), r / radii(2);
+
+	Eigen::Matrix<double, 3, 3> transformation = evecs * S * evecs.transpose();
+
+	return {transformation, center};
 }

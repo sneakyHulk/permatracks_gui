@@ -51,6 +51,38 @@ add_library(${PROJECT_NAME} thirdparty/implot3d/implot3d.cpp thirdparty/implot3d
 target_link_libraries(${PROJECT_NAME} PUBLIC imgui)
 target_include_directories(${PROJECT_NAME} PUBLIC thirdparty/implot3d)
 
+### Sophus
+project(sophus)
+
+add_library(${PROJECT_NAME} INTERFACE)
+target_link_libraries(${PROJECT_NAME} INTERFACE Eigen3::Eigen)
+target_include_directories(${PROJECT_NAME} INTERFACE thirdparty/sophus/sophus)
+target_link_libraries(${PROJECT_NAME} INTERFACE ceres)
+
+set(SOPHUS_HEADER_FILES
+        sophus/average.hpp
+        sophus/cartesian.hpp
+        sophus/ceres_manifold.hpp
+        sophus/ceres_typetraits.hpp
+        sophus/common.hpp
+        sophus/geometry.hpp
+        sophus/interpolate.hpp
+        sophus/interpolate_details.hpp
+        sophus/num_diff.hpp
+        sophus/rotation_matrix.hpp
+        sophus/rxso2.hpp
+        sophus/rxso3.hpp
+        sophus/se2.hpp
+        sophus/se3.hpp
+        sophus/sim2.hpp
+        sophus/sim3.hpp
+        sophus/sim_details.hpp
+        sophus/so2.hpp
+        sophus/so3.hpp
+        sophus/spline.hpp
+        sophus/types.hpp)
+
+
 ### add local libraries
 add_subdirectory(list_serial_devices)
 add_subdirectory(ring_buffer)
@@ -82,6 +114,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
 target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
 target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
@@ -94,5 +127,5 @@ target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
 target_link_libraries(${PROJECT_NAME} PUBLIC glm::glm)
 target_link_libraries(${PROJECT_NAME} PUBLIC GLEW::GLEW)
 #target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::GL)
-#target_link_libraries(${PROJECT_NAME} PUBLIC assimp::assimp)
+target_link_libraries(${PROJECT_NAME} PUBLIC assimp::assimp)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

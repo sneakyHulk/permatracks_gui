@@ -10,6 +10,9 @@
 #include <implot3d.h>
 
 #include <expected>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
 #include <numbers>
 
 #include "Calibration.h"
@@ -21,64 +24,19 @@
 #include "SerialConnection.h"
 #include "Zeroing.h"
 
-struct Vec3 {
-	float x, y, z;
-
-	Vec3() : x(0), y(0), z(0) {}
-	Vec3(float const X, float const Y, float const Z) : x(X), y(Y), z(Z) {}
+enum class ProjectError {
+	BehindCamera,
+	OutsideFrustum,
+	ZeroW,
 };
 
-struct CylinderFace {
-	float z;
-	std::vector<ImVec2> pts;
-	ImU32 color;
-};
-
-void Frustum(float left, float right, float bottom, float top, float znear, float zfar, float* m16);
-void Perspective(float fovyInDegrees, float aspectRatio, float znear, float zfar, float* m16);
-void Cross(const float* a, const float* b, float* r);
-float Dot(const float* a, const float* b);
-void Normalize(const float* a, float* r);
-void MultiplyMatrix(const float* a, const float* b, float* result);
-void LookAt(const float* eye, const float* at, const float* up, float* m16);
-bool InvertMatrix(const float m[16], float invOut[16]);
-void ExtractDirectionFromViewMatrix(const float* view, Vec3& forward, Vec3& right, Vec3& up);
-Vec3 ExtractPositionFromViewMatrix(float const* view);
-Vec3 ExtractForwardFromViewMatrix(float const* view);
-std::tuple<float, float> ExtractAnglesFromForwardSafe(Vec3 const& forward);
-void TransformPoint(const float* m, const float in[3], float out[4]);
-// Apply: proj * view * model * localPos -> screen pixel coords
-ImVec2 ProjectToScreen(const float* view, const float* proj, const float* model, const float local[3], const ImVec2& viewportMin, const ImVec2& viewportSize);
-
-static inline Vec3 NormalizeV(const Vec3& v) {
-	float len = sqrtf(v.x * v.x + v.y * v.y + v.z * v.z);
-	if (len < 1e-6f) return Vec3(0, 1, 0);
-	return Vec3(v.x / len, v.y / len, v.z / len);
-}
-
-static inline Vec3 CrossV(const Vec3& a, const Vec3& b) { return Vec3(a.y * b.z - a.z * b.y, a.z * b.x - a.x * b.z, a.x * b.y - a.y * b.x); }
-
-static inline float DotV(const Vec3& a, const Vec3& b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
-
-static void BuildBasisFromDirection(const Vec3& direction, Vec3& outRight, Vec3& outUp, Vec3& outForward) {
-	outUp = NormalizeV(direction);
-
-	// pick world-up to build right vector
-	Vec3 worldUp(0, 1, 0);
-	if (fabsf(DotV(outUp, worldUp)) > 0.99f) worldUp = Vec3(1, 0, 0);  // fallback
-
-	outRight = NormalizeV(CrossV(worldUp, outUp));
-	outForward = CrossV(outUp, outRight);
-}
-
-static std::array<float, 16> MatrixFromPosDirScale(const Vec3& pos, const Vec3& direction, float radius, float lengthScale = 1.0f) {
-	Vec3 right, up, forward;
-	BuildBasisFromDirection(direction, right, up, forward);
-
-	float h = lengthScale;  // length of cylinder along direction
-
-	return {right.x * radius, right.y * radius, right.z * radius, 0, up.x * h, up.y * h, up.z * h, 0, forward.x * radius, forward.y * radius, forward.z * radius, 0, pos.x, pos.y, pos.z, 1};
-}
+std::expected<ImVec2, ProjectError> ProjectPoint(const glm::vec3& p, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize);
+void DrawDirectionArrow(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& origin, const glm::vec3& direction, const ImVec2& rectPos, const ImVec2& rectSize);
+ImU32 ShadeFace(const glm::mat4& view, const glm::vec3& normal, ImU32 baseColor);
+void DrawShadedFace(std::array<glm::vec3, 4>&& corners, const glm::vec3& normal, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor, ImU32 edgeColor = IM_COL32(255, 255, 255, 180),
+    float const edgeThickness = 1.5f);
+void DrawCylinderFaces(const glm::mat4& view, glm::vec3 const& camPos, const glm::mat4& proj, const glm::vec3& center, const glm::vec3& axis, float radius, float height, const ImVec2& rectPos, const ImVec2& rectSize);
+inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 class TrackingTab : virtual protected SerialConnection,
                     virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
@@ -102,181 +60,6 @@ class TrackingTab : virtual protected SerialConnection,
 	std::shared_ptr<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>> tracking_solution =
 	    std::make_shared<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>>();
 
-	float cameraProjection[16];
-	float cameraView[16] = {1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1};
-	static constexpr float identityMatrix[16] = {1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f};
-
-	std::vector<std::array<float, 16>> object_matrices = {{1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f, 0.f, 0.f, 0.f, 0.f, 1.f}};
-
-	float fov = 27.f;
-	float camDistance = 8.f;
-
-	static void DrawCylindersFilled(const float* view, const float* projection, const float* matrices, int matrixCount, float radius, float height, int segments = 32) {
-		ImDrawList* dl = ImGui::GetWindowDrawList();
-		if (!dl || matrixCount <= 0) return;
-
-		ImVec2 const vpMin = ImGui::GetWindowPos();
-		ImVec2 const vpSize(ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
-
-		const float halfH = height * 0.5f;
-
-		std::vector<CylinderFace> faces;
-		faces.reserve(matrixCount * (segments + 2));  // top + bottom + strips
-
-		for (int i = 0; i < matrixCount; ++i) {
-			const float* model = &matrices[i * 16];
-
-			// precompute all points in world+screen
-			std::vector<ImVec2> topScr(segments);
-			std::vector<ImVec2> botScr(segments);
-			std::vector<float> zTop(segments), zBot(segments);
-
-			for (auto s = 0; s < segments; s++) {
-				float const a = static_cast<float>(s) / segments * 2.f * std::numbers::pi_v<float>;
-				float const x = cosf(a) * radius;
-				float const z = sinf(a) * radius;
-
-				float const topLocal[3] = {x, halfH, z};
-				float const botLocal[3] = {x, -halfH, z};
-
-				float w0[4], w1[4];
-				float v0[4], v1[4];
-				float c0[4], c1[4];
-
-				// top vertex -> world
-				TransformPoint(model, topLocal, w0);
-				TransformPoint(view, w0, v0);
-				TransformPoint(projection, v0, c0);
-
-				// bottom vertex -> world
-				TransformPoint(model, botLocal, w1);
-				TransformPoint(view, w1, v1);
-				TransformPoint(projection, v1, c1);
-
-				auto toScreen = [&](float clip[4]) {
-					float const w = (clip[3] != 0.f ? clip[3] : 1e-6f);
-					float const ndcX = clip[0] / w;
-					float const ndcY = clip[1] / w;
-					float const sx = vpMin.x + (ndcX * 0.5f + 0.5f) * vpSize.x;
-					float const sy = vpMin.y + (-ndcY * 0.5f + 0.5f) * vpSize.y;
-					return ImVec2(sx, sy);
-				};
-
-				topScr[s] = toScreen(c0);
-				botScr[s] = toScreen(c1);
-
-				zTop[s] = c0[2] / c0[3];
-				zBot[s] = c1[2] / c1[3];
-			}
-
-			// -------------------------
-			// TOP DISK
-			// -------------------------
-			{
-				CylinderFace f;
-				f.color = IM_COL32(120, 180, 255, 255);
-				f.z = 0;
-
-				for (auto s = 0; s < segments; ++s) {
-					f.pts.push_back(topScr[s]);
-					f.z += zTop[s];
-				}
-				f.z /= segments;
-
-				faces.push_back(f);
-			}
-
-			// -------------------------
-			// BOTTOM DISK
-			// -------------------------
-			{
-				CylinderFace f;
-				f.color = IM_COL32(120, 120, 200, 255);
-				f.z = 0;
-
-				for (auto s = 0; s < segments; ++s) {
-					f.pts.push_back(botScr[s]);
-					f.z += zBot[s];
-				}
-				f.z /= segments;
-
-				faces.push_back(f);
-			}
-
-			// -------------------------
-			// SIDE STRIPS
-			// -------------------------
-			for (int s = 0; s < segments; s++) {
-				int const next = (s + 1) % segments;
-
-				CylinderFace f;
-				f.color = IM_COL32(160, 160, 255, 255);
-
-				f.pts.push_back(topScr[s]);
-				f.pts.push_back(topScr[next]);
-				f.pts.push_back(botScr[next]);
-				f.pts.push_back(botScr[s]);
-
-				f.z = (zTop[s] + zTop[next] + zBot[s] + zBot[next]) * 0.25f;
-
-				faces.push_back(f);
-			}
-		}
-
-		// ----------------------------------------
-		// depth sort back → front (painter's algorithm)
-		// ----------------------------------------
-		std::ranges::sort(faces, [](const CylinderFace& a, const CylinderFace& b) { return a.z > b.z; });
-
-		// ----------------------------------------
-		// draw all faces
-		// ----------------------------------------
-		for (auto& f : faces) {
-			dl->AddConvexPolyFilled(f.pts.data(), f.pts.size(), f.color);
-		}
-	}
-	static void DrawCylindersWire(const float* view, const float* projection, const float* matrices, int matrixCount, float radius, float height, int segments = 32) {
-		ImDrawList* dl = ImGui::GetWindowDrawList();
-		if (!dl || matrixCount <= 0) return;
-
-		ImVec2 const vpMin = ImGui::GetWindowPos();
-		ImVec2 const vpSize(ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
-
-		const float halfH = height * 0.5f;
-
-		std::vector<ImVec2> top(segments + 1);
-		std::vector<ImVec2> bottom(segments + 1);
-
-		ImU32 const col = IM_COL32(200, 200, 255, 255);
-		float const thickness = 1.5f;
-
-		for (int i = 0; i < matrixCount; i++) {
-			const float* model = &matrices[i * 16];
-
-			// Build top & bottom circles
-			for (int s = 0; s <= segments; s++) {
-				float const a = (float)s / (float)segments * 2.0f * 3.14159265f;
-				float const x = cosf(a) * radius * 2.0f;
-				float const z = sinf(a) * radius * 2.0f;
-
-				float const topLocal[3] = {x, halfH, z};
-				float const bottomLocal[3] = {x, -halfH, z};
-
-				top[s] = ProjectToScreen(view, projection, model, topLocal, vpMin, vpSize);
-				bottom[s] = ProjectToScreen(view, projection, model, bottomLocal, vpMin, vpSize);
-			}
-
-			// draw top circle
-			dl->AddPolyline(top.data(), segments + 1, col, false, thickness);
-
-			// draw bottom circle
-			dl->AddPolyline(bottom.data(), segments + 1, col, false, thickness);
-
-			// connect vertical edges
-			for (int s = 0; s < segments; s++) dl->AddLine(top[s], bottom[s], col, thickness);
-		}
-	}
-
    public:
 	TrackingTab() = default;
 	~TrackingTab() { stop_thread(); }
@@ -292,9 +75,19 @@ class TrackingTab : virtual protected SerialConnection,
 				while (true) {
 					auto current_state = state.load();
 
-					if (auto points = MiMedMagnetometerArraySerialConnectionBinary::push([&current_state]() { return current_state == TrackingTabState::TRACKING; }); points.has_value()) {
+					if (auto magnetometer_data = MiMedMagnetometerArraySerialConnectionBinary::push([&current_state]() { return current_state == TrackingTabState::TRACKING; }); magnetometer_data.has_value()) {
+						for (auto const& [calibration, zeroing, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, Zeroing::_zeroings, magnetometer_data.value())) {
+							Eigen::Vector<double, 3> tmp;
+							tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+
+							tmp = calibration.transformation * (tmp - calibration.center) - zeroing;
+							magnetometer_datapoint.x = tmp.x();
+							magnetometer_datapoint.y = tmp.y();
+							magnetometer_datapoint.z = tmp.z();
+						}
+
 						if (current_state == TrackingTabState::TRACKING) {
-							auto const result = CeresOptimizerDirectionVector::process(points.value());
+							auto const result = CeresOptimizerDirectionVector::process(magnetometer_data.value());
 
 							auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
 
@@ -310,9 +103,9 @@ class TrackingTab : virtual protected SerialConnection,
 							y.front() = result.y;
 							z.front() = result.z;
 
-							mx.front() = result.x;
-							my.front() = result.y;
-							mz.front() = result.z;
+							mx.front() = result.mx;
+							my.front() = result.my;
+							mz.front() = result.mz;
 
 							std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
 
@@ -342,155 +135,98 @@ class TrackingTab : virtual protected SerialConnection,
 		auto const magnets_selected_ = MagnetSelection::magnets_selected();
 
 		if (ImGui::BeginChild("Tracking Child", ImVec2(-1, -1), true)) {
-			{
-				ImGuizmo::BeginFrame();
+			{  // Display Magnet
+				static constexpr glm::vec3 up(0.0f, 1.0f, 0.0f);
+				static constexpr float speed = 5.f;
+				static constexpr float orbit_speed = 0.01f;
 
+				static glm::vec3 camPos(4.0f, 10.0f, 5.0f);
+				static float yaw = glm::radians(-135.0f);
+				static float pitch = glm::radians(-45.0f);
+				static glm::vec3 position = {0.0f, 0.0f, 0.0f};
+				static glm::vec3 direction = {0.0f, 0.0f, 1.0f};
+
+				ImVec2 const winPos = ImGui::GetCursorScreenPos();
+				ImVec2 const winSize = ImGui::GetContentRegionAvail();
 				ImGuiIO const& io = ImGui::GetIO();
-				bool hovered = ImGui::IsWindowHovered();
-				if (hovered) {
-					auto camPos = ExtractPositionFromViewMatrix(cameraView);
-					auto camTarget = Vec3(0, 0, 0);
+				auto const dt = io.DeltaTime;
 
-					Vec3 forward, right, up;
-					ExtractDirectionFromViewMatrix(cameraView, forward, right, up);
-					Normalize(&forward.x, &forward.x);
-					Normalize(&right.x, &right.x);
-					Normalize(&up.x, &up.x);
-
-					// -------------------------------------
-					//         MOUSE WHEEL ZOOM
-					// -------------------------------------
-					if (io.MouseWheel != 0.0f) {
-						camPos.x += forward.x * io.MouseWheel * 0.5f;
-						camPos.y += forward.y * io.MouseWheel * 0.5f;
-						camPos.z += forward.z * io.MouseWheel * 0.5f;
-					}
-
-					// -------------------------------------
-					//        ORBIT CAMERA (Middle)
-					// -------------------------------------
+				if (ImGui::IsWindowHovered()) {
 					if (ImGui::IsMouseDown(ImGuiMouseButton_Middle)) {
-						auto [camXAngle, camYAngle] = ExtractAnglesFromForwardSafe(forward);
-
-						camYAngle -= io.MouseDelta.x * 0.003f;
-						camXAngle += io.MouseDelta.y * 0.003f;
-
-						float const limit = 1.55f;
-						camXAngle = std::clamp(camXAngle, -limit, limit);
-
-						forward = Vec3(std::sin(camYAngle) * std::cos(camXAngle), -std::sinf(camXAngle), std::cos(camYAngle) * std::cos(camXAngle));
-						Normalize(&forward.x, &forward.x);
-
-						// FIX: use WORLD UP to avoid tilt
-						Vec3 const worldUp(0.f, 1.f, 0.f);
-
-						// right = forward × worldUp
-						Cross(&forward.x, &worldUp.x, &right.x);
-						Normalize(&right.x, &right.x);
-
-						// up = right × forward
-						Cross(&right.x, &forward.x, &up.x);
-						Normalize(&up.x, &up.x);
+						yaw += io.MouseDelta.x * orbit_speed;
+						pitch -= io.MouseDelta.y * orbit_speed;
+						pitch = glm::clamp(pitch, -1.57f, 1.57f);
 					}
 
-					// -------------------------------------
-					//        REBUILD TARGET (orbit mode)
-					// -------------------------------------
-
-					camTarget.x = camPos.x + forward.x * camDistance;
-					camTarget.y = camPos.y + forward.y * camDistance;
-					camTarget.z = camPos.z + forward.z * camDistance;
-
-					// -------------------------------------
-					//        WASD + Q/E MOVEMENT
-					// -------------------------------------
-					float const dt = io.DeltaTime;
-					float const speed = 5.0f * dt;
-
-					if (ImGui::IsKeyDown(ImGuiKey_W)) {
-						camPos.x += forward.x * speed;
-						camPos.y += forward.y * speed;
-						camPos.z += forward.z * speed;
+					if (ImGui::IsKeyDown(ImGuiKey_E)) {
+						yaw -= speed * dt;
 					}
-					if (ImGui::IsKeyDown(ImGuiKey_S)) {
-						camPos.x -= forward.x * speed;
-						camPos.y -= forward.y * speed;
-						camPos.z -= forward.z * speed;
+					if (ImGui::IsKeyDown(ImGuiKey_Q)) {
+						yaw += speed * dt;
 					}
-					if (ImGui::IsKeyDown(ImGuiKey_A)) {
-						camPos.x -= right.x * speed;
-						camPos.y -= right.y * speed;
-						camPos.z -= right.z * speed;
-					}
-					if (ImGui::IsKeyDown(ImGuiKey_D)) {
-						camPos.x += right.x * speed;
-						camPos.y += right.y * speed;
-						camPos.z += right.z * speed;
-					}
-					if (ImGui::IsKeyDown(ImGuiKey_Space)) camPos.y += speed;
-					if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) camPos.y -= speed;
-
-					camTarget.x = camPos.x + forward.x * camDistance;
-					camTarget.y = camPos.y + forward.y * camDistance;
-					camTarget.z = camPos.z + forward.z * camDistance;
-
-					// -------------------------------------
-					//     BUILD cameraView with LookAt
-					// -------------------------------------
-					float const eye[3] = {camPos.x, camPos.y, camPos.z};
-					float const at[3] = {camTarget.x, camTarget.y, camTarget.z};
-					float const upz[3] = {up.x, up.y, up.z};
-
-					LookAt(eye, at, upz, cameraView);
 				}
 
-				ImGui::Checkbox("Using ViewManipulate", &hovered);
+				glm::vec3 const forward = glm::normalize(glm::vec3{std::cos(pitch) * std::cos(yaw), std::sin(pitch), std::cos(pitch) * std::sin(yaw)});
 
-				// -------------------------------------
-				//      PROJECTION
-				// -------------------------------------
-				Perspective(fov, ImGui::GetWindowWidth() / ImGui::GetWindowHeight(), 0.1f, 89.9f, cameraProjection);
+				if (ImGui::IsWindowHovered()) {
+					glm::vec3 const right = glm::normalize(glm::cross(forward, up));
 
-				// -------------------------------------
-				//      GUZMO DRAW
-				// -------------------------------------
-				ImGuizmo::SetDrawlist();
-				ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
+					if (io.MouseWheel != 0.0f) camPos += forward * io.MouseWheel * 0.5f;
 
-				ImGuizmo::DrawGrid(cameraView, cameraProjection, identityMatrix, 100.f);
-
-				for (auto magnet : *std::atomic_load(&tracking_solution)) {
-					auto const& [x, y, z, mx, my, mz] = magnet;
-
-					auto const pos = Vec3{static_cast<float>(x[0] * 1e2), static_cast<float>(z[0] * 1e2), -static_cast<float>(y[0] * 1e2)};
-					auto const dir = Vec3{static_cast<float>(mx[0] * 1e2), static_cast<float>(mz[0] * 1e2), -static_cast<float>(my[0] * 1e2)};
-
-					auto matrix = MatrixFromPosDirScale(pos, dir, 0.4f);
-
-					DrawCylindersWire(cameraView, cameraProjection, matrix.data(), 1,
-					    0.4f,  // radius 0.4cm
-					    0.5f,  // height 0.5cm
-					    64     // segments
-					);
+					if (ImGui::IsKeyDown(ImGuiKey_W)) camPos += forward * speed * dt;
+					if (ImGui::IsKeyDown(ImGuiKey_S)) camPos -= forward * speed * dt;
+					if (ImGui::IsKeyDown(ImGuiKey_A)) camPos -= right * speed * dt;
+					if (ImGui::IsKeyDown(ImGuiKey_D)) camPos += right * speed * dt;
+					if (ImGui::IsKeyDown(ImGuiKey_Space)) camPos.y += speed * dt;
+					if (ImGui::IsKeyDown(ImGuiKey_LeftCtrl)) camPos.y -= speed * dt;
 				}
 
-				// -------------------------------------
-				//      VIEW MANIPULATOR
-				// -------------------------------------
+				glm::mat4 view = glm::lookAt(camPos, camPos + forward, up);
+				glm::mat4 proj = glm::perspective(glm::radians(90.0f), winSize.x / winSize.y, 0.1f, 100.0f);
 
-				ImGui::BeginChild("CameraWidget", ImVec2(150, 150), false, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse);
+				// Tell ImGuizmo where to draw
 				ImGuizmo::BeginFrame();
-
 				ImGuizmo::SetDrawlist();
-				ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
+				ImGuizmo::SetRect(winPos.x, winPos.y, winSize.x, winSize.y);
 
-				ImGuizmo::ViewManipulate(cameraView, camDistance, ImVec2(ImGui::GetWindowPos().x + ImGui::GetWindowWidth() - 128, ImGui::GetWindowPos().y), ImVec2(128, 128), 0x10101010);
+				glm::mat4 model(1.0f);
+				ImGuizmo::DrawGrid(glm::value_ptr(view), glm::value_ptr(proj), glm::value_ptr(model), 10.0f);
 
-				if (!hovered) {
-					// Here code to do after view manipulation
+				for (auto const& [solutions, magnet] : std::ranges::views::zip(*std::atomic_load(&tracking_solution), _magnets)) {
+					auto const& [x, y, z, mx, my, mz] = solutions;
+
+					position = glm::vec3{x.front(), y.front(), z.front()};
+					direction = glm::vec3{mx.front(), my.front(), mz.front()};
+
+					// Conversion to cm:
+					position = position * 100.f;
+					float const radius = magnet.R * 100.f;
+					float const height = magnet.H * 100.f;
+
+					DrawDirectionArrow(view, camPos, proj, to_imgui(position), to_imgui(direction), winPos, winSize);
+					DrawCylinderFaces(view, camPos, proj, to_imgui(position), to_imgui(direction), radius, height, winPos, winSize);
 				}
 
-				ImGui::EndChild();
+				if (ImGui::BeginChild("CameraWidget", ImVec2(130, 130), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+					ImGuizmo::BeginFrame();
+
+					ImGuizmo::SetDrawlist();
+					ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, ImGui::GetWindowWidth(), ImGui::GetWindowHeight());
+
+					ImGuizmo::ViewManipulate(glm::value_ptr(view), 10, ImVec2(ImGui::GetWindowPos().x + 130 / 2 - 128 / 2, ImGui::GetWindowPos().y + 130 / 2 - 128 / 2), ImVec2(128, 128), 0x10101010);
+
+					if (ImGui::IsWindowHovered()) {
+						glm::mat4 inv = glm::inverse(view);
+						glm::vec3 const forward2 = glm::normalize(-glm::vec3(inv[2]));
+
+						yaw = std::atan2(forward2.z, forward2.x);
+						pitch = glm::clamp(std::asin(forward2.y), -1.57f, 1.57f);
+
+						camPos = glm::vec3(inv[3]);
+					}
+
+					ImGui::EndChild();
+				}
 			}
 
 			if (error_) {

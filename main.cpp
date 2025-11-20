@@ -2,9 +2,9 @@
 #include <imgui.h>
 #include <implot.h>
 #include <implot3d.h>
-#include <filesystem>
 
 #include <cmath>
+#include <filesystem>
 #include <ranges>
 
 #include "App.h"
@@ -20,6 +20,8 @@ int main(int, char**) {
 	params.appWindowParams.windowGeometry.size = {1024, 720};
 	params.appWindowParams.windowGeometry.positionMode = HelloImGui::WindowPositionMode::MonitorCenter;
 	params.appWindowParams.windowGeometry.monitorIdx = 0;
+
+	params.fpsIdling.enableIdling = false;
 
 	params.callbacks.LoadAdditionalFonts = []() {
 		ImGuiIO& io = ImGui::GetIO();

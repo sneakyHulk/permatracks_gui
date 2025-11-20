@@ -203,8 +203,8 @@ class TrackingTab : virtual protected SerialConnection,
 					float const radius = magnet.R * 100.f;
 					float const height = magnet.H * 100.f;
 
-					DrawDirectionArrow(view, camPos, proj, to_imgui(position), to_imgui(direction), winPos, winSize);
-					DrawCylinderFaces(view, camPos, proj, to_imgui(position), to_imgui(direction), radius, height, winPos, winSize);
+					DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
+					DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
 				}
 
 				if (ImGui::BeginChild("CameraWidget", ImVec2(130, 130), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {

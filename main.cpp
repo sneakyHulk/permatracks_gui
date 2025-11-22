@@ -25,7 +25,7 @@ int main(int, char**) {
 
 	params.callbacks.LoadAdditionalFonts = []() {
 		ImGuiIO& io = ImGui::GetIO();
-		io.FontDefault = io.Fonts->AddFontFromFileTTF((std::filesystem::path(CMAKE_SOURCE_DIR) / "fonts" / "RobotoMono-VariableFont_wght.ttf").c_str(), 24.0f);
+		io.FontDefault = io.Fonts->AddFontFromFileTTF((std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "fonts" / "RobotoMono-VariableFont_wght.ttf").c_str(), 24.0f);
 	};
 
 	params.appWindowParams.restorePreviousGeometry = true;

@@ -12,6 +12,7 @@ find_package(glm CONFIG REQUIRED)
 find_package(Boost CONFIG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Eigen3 REQUIRED)
+find_package(Torch REQUIRED)
 
 ### Ceres
 set(USE_CUDA OFF)
@@ -59,28 +60,26 @@ target_link_libraries(${PROJECT_NAME} INTERFACE Eigen3::Eigen)
 target_include_directories(${PROJECT_NAME} INTERFACE thirdparty/sophus/sophus)
 target_link_libraries(${PROJECT_NAME} INTERFACE ceres)
 
-set(SOPHUS_HEADER_FILES
-        sophus/average.hpp
-        sophus/cartesian.hpp
-        sophus/ceres_manifold.hpp
-        sophus/ceres_typetraits.hpp
-        sophus/common.hpp
-        sophus/geometry.hpp
-        sophus/interpolate.hpp
-        sophus/interpolate_details.hpp
-        sophus/num_diff.hpp
-        sophus/rotation_matrix.hpp
-        sophus/rxso2.hpp
-        sophus/rxso3.hpp
-        sophus/se2.hpp
-        sophus/se3.hpp
-        sophus/sim2.hpp
-        sophus/sim3.hpp
-        sophus/sim_details.hpp
-        sophus/so2.hpp
-        sophus/so3.hpp
-        sophus/spline.hpp
-        sophus/types.hpp)
+### LibTorch
+project(ml LANGUAGES C CXX)
+
+find_package(Torch REQUIRED)
+
+add_library(${PROJECT_NAME} STATIC src/MLOptimizer.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PRIVATE ${TORCH_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PUBLIC msg)
+target_compile_options(${PROJECT_NAME} PRIVATE ${TORCH_CXX_FLAGS})
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+project(test_torch)
+
+add_executable(${PROJECT_NAME} test/${PROJECT_NAME}.cpp)
+target_link_libraries(${PROJECT_NAME} PRIVATE ml)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 
 ### add local libraries
@@ -115,6 +114,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
 target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
 target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
+target_link_libraries(${PROJECT_NAME} PUBLIC ml)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 

@@ -17,6 +17,7 @@
 
 #include "Calibration.h"
 #include "CeresOptimizerDirectionVector.h"
+#include "MLOptimizer.h"
 #include "MagnetSelection.h"
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
@@ -43,7 +44,8 @@ class TrackingTab : virtual protected SerialConnection,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
                     virtual protected MagnetSelection,
-                    virtual protected CeresOptimizerDirectionVector<41> {
+                    virtual protected CeresOptimizerDirectionVector<41>,
+                    virtual protected MLOptimizer<41> {
 	std::atomic_bool error = false;
 
 	enum class TrackingTabState {
@@ -51,6 +53,18 @@ class TrackingTab : virtual protected SerialConnection,
 		TRACKING,
 	};
 	std::atomic<TrackingTabState> state = TrackingTabState::NONE;
+
+	enum class TrackingMethod {
+		OPTIMIZATION_PROBLEM,
+		RESNET18,
+	};
+	std::string to_string(TrackingMethod const method) {
+		switch (method) {
+			case TrackingMethod::OPTIMIZATION_PROBLEM: return "OPTIMIZATION_PROBLEM";
+			case TrackingMethod::RESNET18: return "RESNET18";
+		}
+	}
+	std::atomic<TrackingMethod> method = TrackingMethod::OPTIMIZATION_PROBLEM;
 
 	std::thread thread;
 
@@ -87,29 +101,58 @@ class TrackingTab : virtual protected SerialConnection,
 						}
 
 						if (current_state == TrackingTabState::TRACKING) {
-							auto const result = CeresOptimizerDirectionVector::process(magnetometer_data.value());
+							auto current_method = method.load();
 
-							auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
+							if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
+								auto const result = CeresOptimizerDirectionVector::process(magnetometer_data.value());
 
-							std::move_backward(x.begin(), x.end() - 1, x.end());
-							std::move_backward(y.begin(), y.end() - 1, y.end());
-							std::move_backward(z.begin(), z.end() - 1, z.end());
+								auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
 
-							std::move_backward(mx.begin(), mx.end() - 1, mx.end());
-							std::move_backward(my.begin(), my.end() - 1, my.end());
-							std::move_backward(mz.begin(), mz.end() - 1, mz.end());
+								std::move_backward(x.begin(), x.end() - 1, x.end());
+								std::move_backward(y.begin(), y.end() - 1, y.end());
+								std::move_backward(z.begin(), z.end() - 1, z.end());
 
-							x.front() = result.x;
-							y.front() = result.y;
-							z.front() = result.z;
+								std::move_backward(mx.begin(), mx.end() - 1, mx.end());
+								std::move_backward(my.begin(), my.end() - 1, my.end());
+								std::move_backward(mz.begin(), mz.end() - 1, mz.end());
 
-							mx.front() = result.mx;
-							my.front() = result.my;
-							mz.front() = result.mz;
+								x.front() = result.x;
+								y.front() = result.y;
+								z.front() = result.z;
 
-							std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
+								mx.front() = result.mx;
+								my.front() = result.my;
+								mz.front() = result.mz;
 
-							continue;
+								std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
+
+								continue;
+							}
+							if (current_method == TrackingMethod::RESNET18) {
+								auto const result = MLOptimizer::process(magnetometer_data.value());
+
+								auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
+
+								std::move_backward(x.begin(), x.end() - 1, x.end());
+								std::move_backward(y.begin(), y.end() - 1, y.end());
+								std::move_backward(z.begin(), z.end() - 1, z.end());
+
+								std::move_backward(mx.begin(), mx.end() - 1, mx.end());
+								std::move_backward(my.begin(), my.end() - 1, my.end());
+								std::move_backward(mz.begin(), mz.end() - 1, mz.end());
+
+								x.front() = result.x;
+								y.front() = result.y;
+								z.front() = result.z;
+
+								mx.front() = result.mx;
+								my.front() = result.my;
+								mz.front() = result.mz;
+
+								std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
+
+								continue;
+							}
 						}
 					}
 					break;
@@ -207,7 +250,9 @@ class TrackingTab : virtual protected SerialConnection,
 					DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
 				}
 
-				if (ImGui::BeginChild("CameraWidget", ImVec2(130, 130), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
+				ImGui::SetCursorPosY(ImGui::GetStyle().WindowPadding.y);
+				ImGui::SetCursorPosX(ImGui::GetWindowWidth() - 130.f - ImGui::GetStyle().WindowPadding.x);
+				if (ImGui::BeginChild("CameraWidget", ImVec2(130.f, 130.f), true, ImGuiWindowFlags_NoScrollbar | ImGuiWindowFlags_NoScrollWithMouse)) {
 					ImGuizmo::BeginFrame();
 
 					ImGuizmo::SetDrawlist();
@@ -325,31 +370,20 @@ class TrackingTab : virtual protected SerialConnection,
 					break;
 				}
 				case TrackingTabState::TRACKING: {
-					// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
-					// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_LabelPadding, 1.1f);
-					//
-					// if (std::string title = "Tracking Solution"; ImPlot3D::BeginPlot(title.c_str(), {-1, -1}, ImPlot3DFlags_NoTitle | ImPlot3DFlags_Equal)) {
-					//	ImPlot3D::SetupAxisLimits(ImAxis3D_X, -50, 200, ImGuiCond_Always);
-					//	ImPlot3D::SetupAxisLimits(ImAxis3D_Y, -50, 200, ImGuiCond_Always);
-					//	ImPlot3D::SetupAxisLimits(ImAxis3D_Z, 0, 300, ImGuiCond_Always);
-					//
-					//	static auto ticklabel = [](float const value, char* buff, int const size, void* user_data) { return snprintf(buff, size, "%ld mm", std::lroundf(value)); };
-					//
-					//	ImPlot3D::SetupAxisFormat(ImAxis3D_X, ticklabel, nullptr);
-					//	ImPlot3D::SetupAxisFormat(ImAxis3D_Y, ticklabel, nullptr);
-					//	ImPlot3D::SetupAxisFormat(ImAxis3D_Z, ticklabel, nullptr);
-					//
-					//	// ImPlot3D::SetupAxis(ImAxis3D_X, "Magnetic Flux Density [T]");
-					//	// ImPlot3D::SetupAxis(ImAxis3D_Y, "Magnetic Flux Density [T]");
-					//	// ImPlot3D::SetupAxis(ImAxis3D_Z, "Magnetic Flux Density [T]");
-					//	for (auto i = 0; auto const& [x, y, z] : *std::atomic_load(&tracking_solution)) {
-					//		ImPlot3D::PlotScatter((std::string("Magnet ") + std::to_string(i)).c_str(), x.data(), y.data(), z.data(), x.size());
-					//	}
-					//
-					//	ImPlot3D::EndPlot();
-					//}
-					//
-					// break;
+					ImGui::SetCursorPosY(ImGui::GetStyle().WindowPadding.y);
+					ImGui::SetCursorPosX(ImGui::GetStyle().WindowPadding.x);
+					ImGui::SetNextItemWidth(300.f);
+
+					if (auto const current_method = method.load(); ImGui::BeginCombo("##combo", to_string(method).c_str())) {
+						if (ImGui::Selectable(to_string(TrackingMethod::OPTIMIZATION_PROBLEM).c_str(), current_method == TrackingMethod::OPTIMIZATION_PROBLEM)) {
+							method.store(TrackingMethod::OPTIMIZATION_PROBLEM);
+						}
+						if (ImGui::Selectable(to_string(TrackingMethod::RESNET18).c_str(), current_method == TrackingMethod::RESNET18)) {
+							MLOptimizer::set_model(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "models" / "inverse_biot_savart_net_resnet18_2000000.pt");
+							method.store(TrackingMethod::RESNET18);
+						}
+						ImGui::EndCombo();
+					}
 				}
 			}
 

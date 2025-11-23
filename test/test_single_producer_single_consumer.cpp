@@ -28,10 +28,9 @@ void consumer() {
 		auto current_head = std::atomic_load_explicit(&head, std::memory_order_acquire);
 		auto current_time = std::chrono::steady_clock::now();
 
-		while (current_head) {
+		for (; current_head; current_head = current_head->next) {
 			if (current_head->t + 25ms > current_time) {
 				std::cout << current_head->t.time_since_epoch().count() << ", " << std::flush;
-				current_head = current_head->next;
 			} else {
 				std::cout << std::endl;
 				current_head->next = nullptr;

@@ -9,6 +9,7 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include <chrono>
 #include <expected>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -24,6 +25,8 @@
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
 #include "SerialConnection.h"
 #include "Zeroing.h"
+
+using namespace std::chrono_literals;
 
 enum class ProjectError {
 	BehindCamera,
@@ -224,7 +227,42 @@ class TrackingTab : virtual protected SerialConnection,
 					DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
 					DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
 
-					DrawSphere(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), 0.9f, winPos, winSize);
+					glm::vec3 mean = {0.f, 0.f, 0.f};
+					{
+						auto n_samples = 0;
+						for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
+							if (tmp_current_head->t + 1s > current_time) {
+								mean += glm::vec3{tmp_current_head->solution.x, tmp_current_head->solution.y, tmp_current_head->solution.z};
+								++n_samples;
+							} else {
+								tmp_current_head->next = nullptr;
+								break;
+							}
+						}
+						mean /= n_samples;
+					}
+
+					auto stddev = 0.f;
+					{
+						auto n_samples = 0;
+						for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
+							if (tmp_current_head->t + 1s > current_time) {
+								stddev += (tmp_current_head->solution.x - mean.x) * (tmp_current_head->solution.x - mean.x) + (tmp_current_head->solution.y - mean.y) * (tmp_current_head->solution.y - mean.y) +
+								          (tmp_current_head->solution.z - mean.z) * (tmp_current_head->solution.z - mean.z);
+								++n_samples;
+							} else {
+								if (tmp_current_head->next != nullptr) {
+									std::cout << "ERR" << std::endl;
+								}
+								tmp_current_head->next = nullptr;
+								break;
+							}
+						}
+						stddev /= n_samples;
+						stddev = std::sqrt(stddev);
+					}
+
+					DrawSphere(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), stddev * 100.f, winPos, winSize);
 				}
 
 				ImGui::SetCursorPosY(ImGui::GetStyle().WindowPadding.y);

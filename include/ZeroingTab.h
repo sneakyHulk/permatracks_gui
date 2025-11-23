@@ -245,6 +245,10 @@ class ZeroingTab : virtual protected SerialConnection,
 										}
 									}
 
+									if (current_head) {
+										current_head->next = nullptr;
+									}
+
 									ImPlot::PlotScatter("X-Y Projection", xs.data(), ys.data(), xs.size());
 									ImPlot::PlotScatter("Y-Z Projection", ys.data(), zs.data(), ys.size());
 									ImPlot::PlotScatter("Z-X Projection", zs.data(), xs.data(), zs.size());

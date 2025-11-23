@@ -32,11 +32,6 @@ class CalibrationTab : virtual protected SerialConnection,
 	// CalibrationTab Data
 	std::string error_message;
 
-	// std::shared_ptr<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>> plot_data =
-	//     std::make_shared<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>>();
-	// std::shared_ptr<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>> calibration_data =
-	//     std::make_shared<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>>();
-
 	struct MagneticFluxDensityDataNode {
 		std::shared_ptr<MagneticFluxDensityDataNode> next;
 		Message<Array<MagneticFluxDensityData, OutputSize>> magnetic_flux_density_data;
@@ -54,24 +49,21 @@ class CalibrationTab : virtual protected SerialConnection,
 			thread = std::thread([this]() {
 				std::cout << "Calibration Thread started" << std::endl;
 
-				// std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize> current_plotting_data{};
-				// std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> current_calibration_data{};
-
 				while (true) {
 					auto current_state = state.load();
 
-					if (auto points = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); points.has_value()) {
+					if (auto magnetometer_data = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); magnetometer_data.has_value()) {
 						if (current_state == CalibrationTabState::PLOTTING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, points.value()), std::memory_order_release);
+							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 						if (current_state == CalibrationTabState::CALIBRATING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, points.value()), std::memory_order_release);
+							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 					} else {
 						if (SerialConnection::connected()) {
-							error_message = points.error().what();
+							error_message = magnetometer_data.error().what();
 							SerialConnection::close_serial_port();
 
 							error.store(true);
@@ -226,10 +218,6 @@ class CalibrationTab : virtual protected SerialConnection,
 						state.store(CalibrationTabState::CALIBRATING);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						// if (ImPlot::BeginSubplots("41 scatter plots", 41, 1, ImVec2(-1, -1), ImPlotSubplotFlags_LinkAllX | ImPlotSubplotFlags_LinkAllY)) {
-						// ImPlot::EndSubplots();
-						// }
-
 						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
 						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {

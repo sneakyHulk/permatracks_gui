@@ -84,11 +84,7 @@ class TrackingTab : virtual protected SerialConnection,
 		Message<Pack<Position, DirectionVector>> solution;
 		explicit TrackingSolutionNode(std::shared_ptr<TrackingSolutionNode> const& next, Message<Pack<Position, DirectionVector>> const& solution) : t(std::chrono::steady_clock::now()), next(next), solution(solution) {}
 	};
-
 	std::vector<std::shared_ptr<TrackingSolutionNode>> tracking_solutions;
-
-	// std::shared_ptr<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>> tracking_solution =
-	//     std::make_shared<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>>();
 
    public:
 	TrackingTab() = default;

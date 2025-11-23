@@ -1,5 +1,6 @@
 #pragma once
 
+#include <ATen/core/interned_strings.h>
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
 #include <implot.h>
@@ -31,10 +32,18 @@ class CalibrationTab : virtual protected SerialConnection,
 	// CalibrationTab Data
 	std::string error_message;
 
-	std::shared_ptr<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>> plot_data =
-	    std::make_shared<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>>();
-	std::shared_ptr<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>> calibration_data =
-	    std::make_shared<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>>();
+	// std::shared_ptr<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>> plot_data =
+	//     std::make_shared<std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize>>();
+	// std::shared_ptr<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>> calibration_data =
+	//     std::make_shared<std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize>>();
+
+	struct MagneticFluxDensityDataNode {
+		std::shared_ptr<MagneticFluxDensityDataNode> next;
+		Message<Array<MagneticFluxDensityData, OutputSize>> magnetic_flux_density_data;
+		explicit MagneticFluxDensityDataNode(std::shared_ptr<MagneticFluxDensityDataNode> const& next, Message<Array<MagneticFluxDensityData, OutputSize>> const& magnetic_flux_density_data)
+		    : next(next), magnetic_flux_density_data(magnetic_flux_density_data) {}
+	};
+	std::shared_ptr<MagneticFluxDensityDataNode> data;
 
    public:
 	CalibrationTab() {}
@@ -45,40 +54,19 @@ class CalibrationTab : virtual protected SerialConnection,
 			thread = std::thread([this]() {
 				std::cout << "Calibration Thread started" << std::endl;
 
-				std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize> current_plotting_data{};
-				std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> current_calibration_data{};
+				// std::array<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>, OutputSize> current_plotting_data{};
+				// std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> current_calibration_data{};
 
 				while (true) {
 					auto current_state = state.load();
 
 					if (auto points = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); points.has_value()) {
 						if (current_state == CalibrationTabState::PLOTTING) {
-							for (auto const& [point, xyz] : std::ranges::views::zip(points.value(), current_plotting_data)) {
-								auto& [x, y, z] = xyz;
-
-								std::move_backward(x.begin(), x.end() - 1, x.end());
-								std::move_backward(y.begin(), y.end() - 1, y.end());
-								std::move_backward(z.begin(), z.end() - 1, z.end());
-
-								x.front() = point.x;
-								y.front() = point.y;
-								z.front() = point.z;
-							}
-
-							std::atomic_store(&plot_data, std::make_shared<decltype(current_plotting_data)>(current_plotting_data));
+							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, points.value()), std::memory_order_release);
 							continue;
 						}
 						if (current_state == CalibrationTabState::CALIBRATING) {
-							for (auto const& [point, xyz] : std::ranges::views::zip(points.value(), current_calibration_data)) {
-								auto& [x, y, z] = xyz;
-
-								x.push_back(point.x);
-								y.push_back(point.y);
-								z.push_back(point.z);
-							}
-
-							std::atomic_store(&calibration_data, std::make_shared<decltype(current_calibration_data)>(current_calibration_data));
-
+							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, points.value()), std::memory_order_release);
 							continue;
 						}
 					} else {
@@ -241,7 +229,9 @@ class CalibrationTab : virtual protected SerialConnection,
 						// if (ImPlot::BeginSubplots("41 scatter plots", 41, 1, ImVec2(-1, -1), ImPlotSubplotFlags_LinkAllX | ImPlotSubplotFlags_LinkAllY)) {
 						// ImPlot::EndSubplots();
 						// }
-						for (auto i = 0; auto const& [x, y, z] : *std::atomic_load(&plot_data)) {
+
+						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
 								// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_PlotPadding, {-50.0f, -50.0f});
@@ -263,7 +253,26 @@ class CalibrationTab : virtual protected SerialConnection,
 									// ImPlot3D::SetupAxis(ImAxis3D_Y, "Magnetic Flux Density [T]");
 									// ImPlot3D::SetupAxis(ImAxis3D_Z, "Magnetic Flux Density [T]");
 
-									ImPlot3D::PlotScatter("MagData", x.data(), y.data(), z.data(), x.size());
+									std::array<double, 10> xs{};
+									std::array<double, 10> ys{};
+									std::array<double, 10> zs{};
+									for (auto const& [x, y, z] : std::ranges::views::zip(xs, ys, zs)) {
+										if (current_head) {
+											x = current_head->magnetic_flux_density_data[i].x;
+											y = current_head->magnetic_flux_density_data[i].y;
+											z = current_head->magnetic_flux_density_data[i].z;
+
+											current_head = current_head->next;
+										} else {
+											break;
+										}
+									}
+
+									if (current_head) {
+										current_head->next = nullptr;
+									}
+
+									ImPlot3D::PlotScatter("MagData", xs.data(), ys.data(), zs.data(), xs.size());
 									ImPlot3D::EndPlot();
 								}
 								ImGui::EndTabItem();
@@ -279,13 +288,27 @@ class CalibrationTab : virtual protected SerialConnection,
 					if (ImGui::Button("Calculate Hard- and Soft-Iron Calibration", {-1, 0})) {
 						stop_thread();
 
-						calibrate(*std::atomic_load(&calibration_data));
+						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> calibration_data;
+
+						for (current_head; current_head; current_head = current_head->next) {
+							for (auto const& [magnetic_flux_density_datapoint, calibration_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, calibration_data)) {
+								auto& [xs, ys, zs] = calibration_datapoint;
+
+								xs.push_back(magnetic_flux_density_datapoint.x);
+								ys.push_back(magnetic_flux_density_datapoint.y);
+								zs.push_back(magnetic_flux_density_datapoint.z);
+							}
+						}
+
+						calibrate(calibration_data);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
 						// if (ImPlot::BeginSubplots("41 scatter plots", 41, 1, ImVec2(-1, -1), ImPlotSubplotFlags_LinkAllX | ImPlotSubplotFlags_LinkAllY)) {
 						// ImPlot::EndSubplots();
 						// }
-						for (auto i = 0; auto const& [x, y, z] : *std::atomic_load(&calibration_data)) {
+						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
 								// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_PlotPadding, {-50.0f, -50.0f});
@@ -307,7 +330,17 @@ class CalibrationTab : virtual protected SerialConnection,
 									// ImPlot3D::SetupAxis(ImAxis3D_Y, "Magnetic Flux Density [T]");
 									// ImPlot3D::SetupAxis(ImAxis3D_Z, "Magnetic Flux Density [T]");
 
-									ImPlot3D::PlotScatter("MagData", x.data(), y.data(), z.data(), x.size());
+									std::vector<double> xs{};
+									std::vector<double> ys{};
+									std::vector<double> zs{};
+
+									for (current_head; current_head; current_head = current_head->next) {
+										xs.push_back(current_head->magnetic_flux_density_data[i].x);
+										ys.push_back(current_head->magnetic_flux_density_data[i].y);
+										zs.push_back(current_head->magnetic_flux_density_data[i].z);
+									}
+
+									ImPlot3D::PlotScatter("MagData", xs.data(), ys.data(), zs.data(), xs.size());
 									ImPlot3D::EndPlot();
 								}
 								ImGui::EndTabItem();

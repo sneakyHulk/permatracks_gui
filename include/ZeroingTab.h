@@ -36,7 +36,8 @@ class ZeroingTab : virtual protected SerialConnection,
 		explicit MagneticFluxDensityDataNode(std::shared_ptr<MagneticFluxDensityDataNode> const& next, Message<Array<MagneticFluxDensityData, OutputSize>> const& magnetic_flux_density_data)
 		    : next(next), magnetic_flux_density_data(magnetic_flux_density_data) {}
 	};
-	std::shared_ptr<MagneticFluxDensityDataNode> data;
+	std::shared_ptr<MagneticFluxDensityDataNode> plot_data = nullptr;
+	std::shared_ptr<MagneticFluxDensityDataNode> zeroing_data = nullptr;
 
    public:
 	ZeroingTab() {}
@@ -51,12 +52,22 @@ class ZeroingTab : virtual protected SerialConnection,
 					auto current_state = state.load();
 
 					if (auto magnetometer_data = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); magnetometer_data.has_value()) {
+						for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetometer_data.value())) {
+							Eigen::Vector<double, 3> tmp;
+							tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+
+							tmp = calibration.transformation * (tmp - calibration.center);
+							magnetometer_datapoint.x = tmp.x();
+							magnetometer_datapoint.y = tmp.y();
+							magnetometer_datapoint.z = tmp.z();
+						}
+
 						if (current_state == ZeroingTabState::PLOTTING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
+							std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 						if (current_state == ZeroingTabState::ZEROING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
+							std::atomic_store_explicit(&zeroing_data, std::make_shared<MagneticFluxDensityDataNode>(zeroing_data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 					} else {
@@ -200,11 +211,13 @@ class ZeroingTab : virtual protected SerialConnection,
 				}
 				case ZeroingTabState::PLOTTING: {
 					if (ImGui::Button("Start Zeroing", {-1, 0})) {
+						zeroing_data = nullptr;
+
 						state.store(ZeroingTabState::ZEROING);
 					}
 
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						auto current_head = std::atomic_load_explicit(&plot_data, std::memory_order_acquire);
 						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -256,7 +269,6 @@ class ZeroingTab : virtual protected SerialConnection,
 								}
 								ImGui::EndTabItem();
 							}
-							++i;
 						}
 
 						ImGui::EndTabBar();
@@ -267,12 +279,12 @@ class ZeroingTab : virtual protected SerialConnection,
 					if (ImGui::Button("Calculate Zeroing", {-1, 0})) {
 						stop_thread();
 
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
-						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> zeroing_data;
+						auto current_head = std::atomic_load_explicit(&zeroing_data, std::memory_order_acquire);
+						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> output_zeroing_data;
 
 						for (current_head; current_head; current_head = current_head->next) {
-							for (auto const& [magnetic_flux_density_datapoint, calibration_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, zeroing_data)) {
-								auto& [xs, ys, zs] = calibration_datapoint;
+							for (auto const& [magnetic_flux_density_datapoint, output_zeroing_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, output_zeroing_data)) {
+								auto& [xs, ys, zs] = output_zeroing_datapoint;
 
 								xs.push_back(magnetic_flux_density_datapoint.x);
 								ys.push_back(magnetic_flux_density_datapoint.y);
@@ -280,10 +292,10 @@ class ZeroingTab : virtual protected SerialConnection,
 							}
 						}
 
-						zero(zeroing_data);
+						zero(output_zeroing_data);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						auto current_head = std::atomic_load_explicit(&zeroing_data, std::memory_order_acquire);
 						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImVec2 avail = ImGui::GetContentRegionAvail();
@@ -326,7 +338,6 @@ class ZeroingTab : virtual protected SerialConnection,
 								}
 								ImGui::EndTabItem();
 							}
-							++i;
 						}
 
 						ImGui::EndTabBar();

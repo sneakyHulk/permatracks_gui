@@ -38,7 +38,8 @@ class CalibrationTab : virtual protected SerialConnection,
 		explicit MagneticFluxDensityDataNode(std::shared_ptr<MagneticFluxDensityDataNode> const& next, Message<Array<MagneticFluxDensityData, OutputSize>> const& magnetic_flux_density_data)
 		    : next(next), magnetic_flux_density_data(magnetic_flux_density_data) {}
 	};
-	std::shared_ptr<MagneticFluxDensityDataNode> data;
+	std::shared_ptr<MagneticFluxDensityDataNode> plot_data = nullptr;
+	std::shared_ptr<MagneticFluxDensityDataNode> calibration_data = nullptr;
 
    public:
 	CalibrationTab() {}
@@ -54,11 +55,11 @@ class CalibrationTab : virtual protected SerialConnection,
 
 					if (auto magnetometer_data = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); magnetometer_data.has_value()) {
 						if (current_state == CalibrationTabState::PLOTTING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
+							std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 						if (current_state == CalibrationTabState::CALIBRATING) {
-							std::atomic_store_explicit(&data, std::make_shared<MagneticFluxDensityDataNode>(data, magnetometer_data.value()), std::memory_order_release);
+							std::atomic_store_explicit(&calibration_data, std::make_shared<MagneticFluxDensityDataNode>(calibration_data, magnetometer_data.value()), std::memory_order_release);
 							continue;
 						}
 					} else {
@@ -215,10 +216,12 @@ class CalibrationTab : virtual protected SerialConnection,
 				}
 				case CalibrationTabState::PLOTTING: {
 					if (ImGui::Button("Start Hard- and Soft-Iron Calibration", {-1, 0})) {
+						calibration_data = nullptr;
+
 						state.store(CalibrationTabState::CALIBRATING);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						auto current_head = std::atomic_load_explicit(&plot_data, std::memory_order_acquire);
 						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
@@ -265,7 +268,6 @@ class CalibrationTab : virtual protected SerialConnection,
 								}
 								ImGui::EndTabItem();
 							}
-							++i;
 						}
 
 						ImGui::EndTabBar();
@@ -276,12 +278,12 @@ class CalibrationTab : virtual protected SerialConnection,
 					if (ImGui::Button("Calculate Hard- and Soft-Iron Calibration", {-1, 0})) {
 						stop_thread();
 
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
-						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> calibration_data;
+						auto current_head = std::atomic_load_explicit(&calibration_data, std::memory_order_acquire);
+						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> output_calibration_data;
 
 						for (current_head; current_head; current_head = current_head->next) {
-							for (auto const& [magnetic_flux_density_datapoint, calibration_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, calibration_data)) {
-								auto& [xs, ys, zs] = calibration_datapoint;
+							for (auto const& [magnetic_flux_density_datapoint, output_calibration_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, output_calibration_data)) {
+								auto& [xs, ys, zs] = output_calibration_datapoint;
 
 								xs.push_back(magnetic_flux_density_datapoint.x);
 								ys.push_back(magnetic_flux_density_datapoint.y);
@@ -289,13 +291,10 @@ class CalibrationTab : virtual protected SerialConnection,
 							}
 						}
 
-						calibrate(calibration_data);
+						calibrate(output_calibration_data);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						// if (ImPlot::BeginSubplots("41 scatter plots", 41, 1, ImVec2(-1, -1), ImPlotSubplotFlags_LinkAllX | ImPlotSubplotFlags_LinkAllY)) {
-						// ImPlot::EndSubplots();
-						// }
-						auto current_head = std::atomic_load_explicit(&data, std::memory_order_acquire);
+						auto current_head = std::atomic_load_explicit(&calibration_data, std::memory_order_acquire);
 						for (auto i = 0; i < OutputSize; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
@@ -333,7 +332,6 @@ class CalibrationTab : virtual protected SerialConnection,
 								}
 								ImGui::EndTabItem();
 							}
-							++i;
 						}
 
 						ImGui::EndTabBar();

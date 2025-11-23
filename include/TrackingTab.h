@@ -220,8 +220,12 @@ class TrackingTab : virtual protected SerialConnection,
 					float const height = magnet.H * 100.f;
 
 					if (debug) {
-						auto position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
-						auto direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
+						glm::vec3 position = {0.f, 0.f, 0.f};
+						glm::vec3 direction = {0.f, 0.f, 0.f};
+						if (current_head) {
+							position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
+							direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
+						}
 
 						// Conversion to cm:
 						position = position * 100.f;
@@ -234,7 +238,7 @@ class TrackingTab : virtual protected SerialConnection,
 						{
 							auto n_samples = 0;
 							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-								if (tmp_current_head->t + 1s > current_time) {
+								if (tmp_current_head->t + 250ms > current_time) {
 									position += glm::vec3{tmp_current_head->solution.x, tmp_current_head->solution.y, tmp_current_head->solution.z};
 									direction += glm::vec3{tmp_current_head->solution.mx, tmp_current_head->solution.my, tmp_current_head->solution.mz};
 									++n_samples;
@@ -251,7 +255,7 @@ class TrackingTab : virtual protected SerialConnection,
 						{
 							auto n_samples = 0;
 							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-								if (tmp_current_head->t + 1s > current_time) {
+								if (tmp_current_head->t + 250ms > current_time) {
 									stddev += (tmp_current_head->solution.x - position.x) * (tmp_current_head->solution.x - position.x) + (tmp_current_head->solution.y - position.y) * (tmp_current_head->solution.y - position.y) +
 									          (tmp_current_head->solution.z - position.z) * (tmp_current_head->solution.z - position.z);
 									++n_samples;

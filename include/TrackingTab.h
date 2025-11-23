@@ -155,6 +155,7 @@ class TrackingTab : virtual protected SerialConnection,
 		auto const magnets_selected_ = MagnetSelection::magnets_selected();
 
 		if (ImGui::BeginChild("Tracking Child", ImVec2(-1, -1), true)) {
+			static auto debug = true;
 			{  // Display Magnet
 				static constexpr glm::vec3 up(0.0f, 1.0f, 0.0f);
 				static constexpr float speed = 5.f;
@@ -163,8 +164,6 @@ class TrackingTab : virtual protected SerialConnection,
 				static glm::vec3 camPos(4.0f, 10.0f, 5.0f);
 				static float yaw = glm::radians(-135.0f);
 				static float pitch = glm::radians(-45.0f);
-				static glm::vec3 position = {0.0f, 0.0f, 0.0f};
-				static glm::vec3 direction = {0.0f, 0.0f, 1.0f};
 
 				ImVec2 const winPos = ImGui::GetCursorScreenPos();
 				ImVec2 const winSize = ImGui::GetContentRegionAvail();
@@ -216,53 +215,67 @@ class TrackingTab : virtual protected SerialConnection,
 					auto current_head = std::atomic_load_explicit(&solutions, std::memory_order_acquire);
 					auto current_time = std::chrono::steady_clock::now();
 
-					position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
-					direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
-
 					// Conversion to cm:
-					position = position * 100.f;
 					float const radius = magnet.R * 100.f;
 					float const height = magnet.H * 100.f;
 
-					DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
-					DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
+					if (debug) {
+						auto position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
+						auto direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
 
-					glm::vec3 mean = {0.f, 0.f, 0.f};
-					{
-						auto n_samples = 0;
-						for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-							if (tmp_current_head->t + 1s > current_time) {
-								mean += glm::vec3{tmp_current_head->solution.x, tmp_current_head->solution.y, tmp_current_head->solution.z};
-								++n_samples;
-							} else {
-								tmp_current_head->next = nullptr;
-								break;
-							}
-						}
-						mean /= n_samples;
-					}
+						// Conversion to cm:
+						position = position * 100.f;
 
-					auto stddev = 0.f;
-					{
-						auto n_samples = 0;
-						for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-							if (tmp_current_head->t + 1s > current_time) {
-								stddev += (tmp_current_head->solution.x - mean.x) * (tmp_current_head->solution.x - mean.x) + (tmp_current_head->solution.y - mean.y) * (tmp_current_head->solution.y - mean.y) +
-								          (tmp_current_head->solution.z - mean.z) * (tmp_current_head->solution.z - mean.z);
-								++n_samples;
-							} else {
-								if (tmp_current_head->next != nullptr) {
-									std::cout << "ERR" << std::endl;
+						DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
+						DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
+					} else {
+						glm::vec3 position = {0.f, 0.f, 0.f};
+						glm::vec3 direction = {0.f, 0.f, 0.f};
+						{
+							auto n_samples = 0;
+							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
+								if (tmp_current_head->t + 1s > current_time) {
+									position += glm::vec3{tmp_current_head->solution.x, tmp_current_head->solution.y, tmp_current_head->solution.z};
+									direction += glm::vec3{tmp_current_head->solution.mx, tmp_current_head->solution.my, tmp_current_head->solution.mz};
+									++n_samples;
+								} else {
+									tmp_current_head->next = nullptr;
+									break;
 								}
-								tmp_current_head->next = nullptr;
-								break;
 							}
+							position /= n_samples;
+							direction /= n_samples;
 						}
-						stddev /= n_samples;
-						stddev = std::sqrt(stddev);
-					}
 
-					DrawSphere(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), stddev * 100.f, winPos, winSize);
+						auto stddev = 0.f;
+						{
+							auto n_samples = 0;
+							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
+								if (tmp_current_head->t + 1s > current_time) {
+									stddev += (tmp_current_head->solution.x - position.x) * (tmp_current_head->solution.x - position.x) + (tmp_current_head->solution.y - position.y) * (tmp_current_head->solution.y - position.y) +
+									          (tmp_current_head->solution.z - position.z) * (tmp_current_head->solution.z - position.z);
+									++n_samples;
+								} else {
+									if (tmp_current_head->next != nullptr) {
+										std::cout << "ERR" << std::endl;
+									}
+									tmp_current_head->next = nullptr;
+									break;
+								}
+							}
+							stddev /= n_samples;
+							stddev = std::sqrt(stddev);
+
+							std::cout << stddev * 1000.f << "mm" << std::endl;
+						}
+
+						// Conversion to cm:
+						position = position * 100.f;
+
+						DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
+						DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
+						DrawSphere(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), stddev * 100.f, winPos, winSize);
+					}
 				}
 
 				ImGui::SetCursorPosY(ImGui::GetStyle().WindowPadding.y);
@@ -399,6 +412,9 @@ class TrackingTab : virtual protected SerialConnection,
 						}
 						ImGui::EndCombo();
 					}
+
+					ImGui::SameLine();
+					ImGui::Checkbox("Debug", &debug);
 				}
 			}
 

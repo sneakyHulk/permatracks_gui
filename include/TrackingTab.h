@@ -35,8 +35,11 @@ std::expected<ImVec2, ProjectError> ProjectPoint(const glm::vec3& p, const glm::
 void DrawDirectionArrow(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& origin, const glm::vec3& direction, const ImVec2& rectPos, const ImVec2& rectSize);
 ImU32 ShadeFace(const glm::mat4& view, const glm::vec3& normal, ImU32 baseColor);
 void DrawShadedFace(std::array<glm::vec3, 4>&& corners, const glm::vec3& normal, const glm::mat4& view, const glm::mat4& proj, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor, ImU32 edgeColor = IM_COL32(255, 255, 255, 180),
-    float const edgeThickness = 1.5f);
+    float edgeThickness = 1.5f);
 void DrawCylinderFaces(const glm::mat4& view, glm::vec3 const& camPos, const glm::mat4& proj, const glm::vec3& center, const glm::vec3& axis, float radius, float height, const ImVec2& rectPos, const ImVec2& rectSize);
+void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& center, float radius, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor = IM_COL32(255, 50, 50, 40),  // very transparent
+    int rings = 16, int sectors = 32);
+
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 class TrackingTab : virtual protected SerialConnection,
@@ -58,11 +61,12 @@ class TrackingTab : virtual protected SerialConnection,
 		OPTIMIZATION_PROBLEM,
 		RESNET18,
 	};
-	std::string to_string(TrackingMethod const method) {
+	std::string to_string(TrackingMethod const method) const {
 		switch (method) {
 			case TrackingMethod::OPTIMIZATION_PROBLEM: return "OPTIMIZATION_PROBLEM";
 			case TrackingMethod::RESNET18: return "RESNET18";
 		}
+		return {};
 	}
 	std::atomic<TrackingMethod> method = TrackingMethod::OPTIMIZATION_PROBLEM;
 
@@ -71,8 +75,17 @@ class TrackingTab : virtual protected SerialConnection,
 	// TrackingTab Data
 	std::string error_message;
 
-	std::shared_ptr<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>> tracking_solution =
-	    std::make_shared<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>>();
+	struct TrackingSolutionNode {
+		std::chrono::time_point<std::chrono::steady_clock> t;
+		std::shared_ptr<TrackingSolutionNode> next;
+		Message<Pack<Position, DirectionVector>> solution;
+		explicit TrackingSolutionNode(std::shared_ptr<TrackingSolutionNode> const& next, Message<Pack<Position, DirectionVector>> const& solution) : t(std::chrono::steady_clock::now()), next(next), solution(solution) {}
+	};
+
+	std::vector<std::shared_ptr<TrackingSolutionNode>> tracking_solutions;
+
+	// std::shared_ptr<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>> tracking_solution =
+	//     std::make_shared<std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>>>();
 
    public:
 	TrackingTab() = default;
@@ -80,11 +93,10 @@ class TrackingTab : virtual protected SerialConnection,
 
 	void start_thread() {
 		if (auto expected = TrackingTabState::NONE; state.compare_exchange_strong(expected, TrackingTabState::TRACKING)) {
+			tracking_solutions = std::vector<std::shared_ptr<TrackingSolutionNode>>(MagnetSelection::_magnets.size(), nullptr);
+
 			thread = std::thread([this]() {
 				std::cout << "Tracking Thread started" << std::endl;
-
-				std::vector<std::tuple<std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>, std::array<double, 10>>> current_tracking_solution(
-				    MagnetSelection::_magnets.size());
 
 				while (true) {
 					auto current_state = state.load();
@@ -101,56 +113,18 @@ class TrackingTab : virtual protected SerialConnection,
 						}
 
 						if (current_state == TrackingTabState::TRACKING) {
-							auto current_method = method.load();
+							auto const current_method = method.load();
 
 							if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
 								auto const result = CeresOptimizerDirectionVector::process(magnetometer_data.value());
 
-								auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
-
-								std::move_backward(x.begin(), x.end() - 1, x.end());
-								std::move_backward(y.begin(), y.end() - 1, y.end());
-								std::move_backward(z.begin(), z.end() - 1, z.end());
-
-								std::move_backward(mx.begin(), mx.end() - 1, mx.end());
-								std::move_backward(my.begin(), my.end() - 1, my.end());
-								std::move_backward(mz.begin(), mz.end() - 1, mz.end());
-
-								x.front() = result.x;
-								y.front() = result.y;
-								z.front() = result.z;
-
-								mx.front() = result.mx;
-								my.front() = result.my;
-								mz.front() = result.mz;
-
-								std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
-
+								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
 								continue;
 							}
 							if (current_method == TrackingMethod::RESNET18) {
 								auto const result = MLOptimizer::process(magnetometer_data.value());
 
-								auto& [x, y, z, mx, my, mz] = current_tracking_solution[0];
-
-								std::move_backward(x.begin(), x.end() - 1, x.end());
-								std::move_backward(y.begin(), y.end() - 1, y.end());
-								std::move_backward(z.begin(), z.end() - 1, z.end());
-
-								std::move_backward(mx.begin(), mx.end() - 1, mx.end());
-								std::move_backward(my.begin(), my.end() - 1, my.end());
-								std::move_backward(mz.begin(), mz.end() - 1, mz.end());
-
-								x.front() = result.x;
-								y.front() = result.y;
-								z.front() = result.z;
-
-								mx.front() = result.mx;
-								my.front() = result.my;
-								mz.front() = result.mz;
-
-								std::atomic_store(&tracking_solution, std::make_shared<decltype(current_tracking_solution)>(current_tracking_solution));
-
+								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
 								continue;
 							}
 						}
@@ -235,11 +209,12 @@ class TrackingTab : virtual protected SerialConnection,
 				glm::mat4 model(1.0f);
 				ImGuizmo::DrawGrid(glm::value_ptr(view), glm::value_ptr(proj), glm::value_ptr(model), 10.0f);
 
-				for (auto const& [solutions, magnet] : std::ranges::views::zip(*std::atomic_load(&tracking_solution), _magnets)) {
-					auto const& [x, y, z, mx, my, mz] = solutions;
+				for (auto const& [solutions, magnet] : std::ranges::views::zip(tracking_solutions, _magnets)) {
+					auto current_head = std::atomic_load_explicit(&solutions, std::memory_order_acquire);
+					auto current_time = std::chrono::steady_clock::now();
 
-					position = glm::vec3{x.front(), y.front(), z.front()};
-					direction = glm::vec3{mx.front(), my.front(), mz.front()};
+					position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
+					direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
 
 					// Conversion to cm:
 					position = position * 100.f;
@@ -248,6 +223,8 @@ class TrackingTab : virtual protected SerialConnection,
 
 					DrawDirectionArrow(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), winPos, winSize);
 					DrawCylinderFaces(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), to_imgui(direction), radius, height, winPos, winSize);
+
+					DrawSphere(view, camPos, proj, to_imgui(position - glm::vec3{17.f / 2.f, 20.f / 2.f, 0.f}), 0.9f, winPos, winSize);
 				}
 
 				ImGui::SetCursorPosY(ImGui::GetStyle().WindowPadding.y);

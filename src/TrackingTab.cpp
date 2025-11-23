@@ -119,3 +119,30 @@ void DrawCylinderFaces(const glm::mat4& view, glm::vec3 const& camPos, const glm
 		}
 	}
 }
+void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& center, float radius, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor, int rings, int sectors) {
+	for (int i = 0; i < rings; i++) {
+		float theta0 = std::numbers::pi_v<float> * static_cast<float>(i) / rings;
+		float theta1 = std::numbers::pi_v<float> * static_cast<float>(i + 1) / rings;
+
+		for (int j = 0; j < sectors; j++) {
+			float phi0 = 2.f * std::numbers::pi_v<float> * static_cast<float>(j) / sectors;
+			float phi1 = 2.f * std::numbers::pi_v<float> * static_cast<float>(j + 1) / sectors;
+
+			glm::vec3 const p00 = center + radius * glm::vec3(std::sin(theta0) * std::cos(phi0), std::cos(theta0), std::sin(theta0) * std::sin(phi0));
+			glm::vec3 const p01 = center + radius * glm::vec3(std::sin(theta0) * std::cos(phi1), std::cos(theta0), std::sin(theta0) * std::sin(phi1));
+			glm::vec3 const p10 = center + radius * glm::vec3(std::sin(theta1) * std::cos(phi0), std::cos(theta1), std::sin(theta1) * std::sin(phi0));
+			glm::vec3 const p11 = center + radius * glm::vec3(std::sin(theta1) * std::cos(phi1), std::cos(theta1), std::sin(theta1) * std::sin(phi1));
+
+			// Face normal (approx)
+			glm::vec3 const n = glm::normalize(p00 + p01 + p10 + p11 - 4.0f * center);
+
+			// Only draw if front-facing relative to camera
+			glm::vec3 const faceCenter = (p00 + p01 + p10 + p11) * 0.25f;
+			glm::vec3 const viewDir = glm::normalize(camPos - faceCenter);
+			if (glm::dot(n, -viewDir) <= 0.0f) continue;
+
+			DrawShadedFace({p00, p01, p11, p10}, n, view, proj, rectPos, rectSize, baseColor, IM_COL32(200, 200, 255, 30),  // faint outline
+			    0.8f);
+		}
+	}
+}

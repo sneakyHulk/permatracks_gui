@@ -1,6 +1,9 @@
 cmake_minimum_required(VERSION 3.22)
 project(permatracks)
 
+set(ENV{PYTORCH_ROCM_ARCH} "gfx1030")
+message(STATUS "Forcing ROCm arch: ${PYTORCH_ROCM_ARCH}")
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 23)
 
@@ -78,6 +81,7 @@ project(test_torch)
 
 add_executable(${PROJECT_NAME} test/${PROJECT_NAME}.cpp)
 target_link_libraries(${PROJECT_NAME} PRIVATE ml)
+target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
@@ -128,4 +132,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC glm::glm)
 target_link_libraries(${PROJECT_NAME} PUBLIC GLEW::GLEW)
 #target_link_libraries(${PROJECT_NAME} PUBLIC OpenGL::GL)
 target_link_libraries(${PROJECT_NAME} PUBLIC assimp::assimp)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+project(test_single_producer_single_consumer)
+
+add_executable(${PROJECT_NAME} test/test_single_producer_single_consumer.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

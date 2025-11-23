@@ -4,9 +4,9 @@
 // This is necessary
 
 #include <ImGuizmo.h>
-#include <__filesystem/filesystem_error.h>
 
 #include <expected>
+#include <filesystem>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -225,7 +225,6 @@ std::vector<StlTriangle> LoadStlAssimp(const std::string& filename) {
 	for (unsigned m = 0; m < scene->mNumMeshes; ++m) {
 		aiMesh* mesh = scene->mMeshes[m];
 
-		// 🟢 STL zentrieren
 		CenterMesh(mesh);
 
 		for (unsigned f = 0; f < mesh->mNumFaces; ++f) {
@@ -243,6 +242,35 @@ std::vector<StlTriangle> LoadStlAssimp(const std::string& filename) {
 	}
 
 	return tris;
+}
+
+void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4& proj, const glm::vec3& center, float radius, const ImVec2& rectPos, const ImVec2& rectSize, ImU32 baseColor = IM_COL32(255, 50, 50, 40),  // very transparent
+    int rings = 16, int sectors = 32) {
+	for (int i = 0; i < rings; i++) {
+		float theta0 = std::numbers::pi_v<float> * static_cast<float>(i) / rings;
+		float theta1 = std::numbers::pi_v<float> * static_cast<float>(i + 1) / rings;
+
+		for (int j = 0; j < sectors; j++) {
+			float phi0 = 2.f * std::numbers::pi_v<float> * static_cast<float>(j) / sectors;
+			float phi1 = 2.f * std::numbers::pi_v<float> * static_cast<float>(j + 1) / sectors;
+
+			glm::vec3 const p00 = center + radius * glm::vec3(std::sin(theta0) * std::cos(phi0), std::cos(theta0), std::sin(theta0) * std::sin(phi0));
+			glm::vec3 const p01 = center + radius * glm::vec3(std::sin(theta0) * std::cos(phi1), std::cos(theta0), std::sin(theta0) * std::sin(phi1));
+			glm::vec3 const p10 = center + radius * glm::vec3(std::sin(theta1) * std::cos(phi0), std::cos(theta1), std::sin(theta1) * std::sin(phi0));
+			glm::vec3 const p11 = center + radius * glm::vec3(std::sin(theta1) * std::cos(phi1), std::cos(theta1), std::sin(theta1) * std::sin(phi1));
+
+			// Face normal (approx)
+			glm::vec3 const n = glm::normalize(p00 + p01 + p10 + p11 - 4.0f * center);
+
+			// Only draw if front-facing relative to camera
+			glm::vec3 const faceCenter = (p00 + p01 + p10 + p11) * 0.25f;
+			glm::vec3 const viewDir = glm::normalize(camPos - faceCenter);
+			if (glm::dot(n, -viewDir) <= 0.0f) continue;
+
+			DrawShadedFace({p00, p01, p11, p10}, n, view, proj, rectPos, rectSize, baseColor, IM_COL32(200, 200, 255, 30),  // faint outline
+			    0.8f);
+		}
+	}
 }
 
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
@@ -313,6 +341,10 @@ void AppGui() {
 				DrawDirectionArrow(view, camPos, proj, to_imgui(position), to_imgui(direction), winPos, winSize);
 				// DrawCylinder(view, proj, position, direction, 0.4f, 0.5f, winPos, winSize);
 				DrawCylinderFaces(view, camPos, proj, to_imgui(position), to_imgui(direction), 0.4f, 0.5f, winPos, winSize);
+
+				DrawSphere(view, camPos, proj, to_imgui(position),
+				    0.9f,  // radius (tweak to fit around cylinder)
+				    winPos, winSize);
 
 				// glm::vec3 f = glm::normalize(direction);
 				// glm::vec3 u = glm::vec3(0, 1, 0);

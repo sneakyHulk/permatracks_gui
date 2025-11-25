@@ -6,10 +6,13 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include <nlohmann/json.hpp>
 #include <queue>
 #include <string>
 
 #include "Calibration.h"
+#include "EigenJsonUtils.h"
+#include "ImGuiFileDialog.h"
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
@@ -94,11 +97,48 @@ class CalibrationTab : virtual protected SerialConnection,
 		auto const calibrated_ = Calibration::calibrated();
 
 		if (ImGui::BeginChild("Calibration Child", ImVec2(-1, -1), true)) {
+#if SHOWCASE
+			ImGui::TextWrapped("Select a calibration file to load calibration.");
+#else
 			ImGui::TextWrapped(
 			    "Click Start Calibration, then slowly rotate and tilt the device in all possible orientations to ensure the sensor experiences a full range of magnetic field directions. When the plotted data points form a complete sphere, "
 			    "click Calculate to derive the calibration coefficients from the collected samples.");
+#endif
 
 			ImGui::Separator();
+
+#if SHOWCASE
+			if (ImGui::Button("Select Calibration", {-1, 0})) {
+				IGFD::FileDialogConfig config;
+				config.path = CMAKE_SOURCE_DIR;
+				ImGuiFileDialog::Instance()->OpenDialog("Select Calibration", "Choose File", ".json", config);
+				ImGui::SetNextWindowSize({800, 500}, ImGuiCond_Always);
+			}
+			// display
+			ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
+			if (ImGuiFileDialog::Instance()->Display("Select Calibration")) {
+				if (ImGuiFileDialog::Instance()->IsOk()) {  // action if OK
+					std::string filePathName = ImGuiFileDialog::Instance()->GetFilePathName();
+					std::string filePath = ImGuiFileDialog::Instance()->GetCurrentPath();
+					// action
+
+					std::ifstream stream(std::filesystem::path(filePath) / filePathName);
+					nlohmann::json json = nlohmann::json::parse(stream);
+					std::vector transformations =
+					    json | std::ranges::views::transform([](nlohmann::basic_json<> const& value) { return value["transformation"].template get<Eigen::Matrix<double, 4, 4>>(); }) | std::ranges::to<std::vector>();
+
+					for (auto const& [transformation, calibration] : std::ranges::views::zip(transformations, _calibrations)) {
+						calibration.transformation = transformation.block<3, 3>(0, 0);
+						calibration.center = -transformation.block<3, 1>(0, 3);
+					}
+					_calibrated = true;
+					state.store(CalibrationTabState::CALIBRATING);
+				}
+
+				// close
+				ImGuiFileDialog::Instance()->Close();
+			}
+#endif
 
 			if (error_) {
 				stop_thread();
@@ -200,11 +240,18 @@ class CalibrationTab : virtual protected SerialConnection,
 					reset_calibration();
 				}
 
+#if not SHOWCASE
+				if (ImGui::Button("Save Cailbration", {-1, 0})) {
+					_calibrations;
+				}
+#endif
+
 				ImGui::End();
 				ImGui::EndChild();
 				return;
 			}
 
+#if not SHOWCASE
 			switch (state.load()) {
 				case CalibrationTabState::NONE: {
 					if (thread.joinable()) {
@@ -339,7 +386,7 @@ class CalibrationTab : virtual protected SerialConnection,
 					break;
 				}
 			}
-
+#endif
 			ImGui::EndChild();
 		}
 	}

@@ -8,9 +8,8 @@
 
 template <std::size_t N>
 class Calibration {
-	bool _calibrated = false;
-
    protected:
+	bool _calibrated = false;
 	std::array<EllipsoidFitResult, N> _calibrations;
 
    public:

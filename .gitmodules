@@ -16,3 +16,6 @@
 [submodule "thirdparty/sophus"]
 	path = thirdparty/sophus
 	url = https://github.com/strasdat/Sophus.git
+[submodule "thirdparty/imguifiledialog"]
+	path = thirdparty/imguifiledialog
+	url = https://github.com/aiekick/ImGuiFileDialog.git

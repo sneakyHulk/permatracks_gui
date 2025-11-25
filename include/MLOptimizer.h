@@ -31,21 +31,39 @@ class MLOptimizer : virtual protected MagnetSelection {
 
 		torch::Tensor input = torch::from_blob(tensor_data.data(), {1, N * 3}, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kMPS);
 
-		auto const output = model.forward({input}).toTuple();
-		auto const position = output->elements().at(0).toTensor();
-		auto const direction = output->elements().at(1).toTensor();
+		auto const output = model.forward({input});
+		if (output.isTuple()) {
+			auto const output_tuple = output.toTuple();
 
-		Message<Pack<Position, DirectionVector>> out;
-		out.timestamp = data.timestamp;
-		out.src = data.src;
-		out.x = position[0][0].template item<float>() / 1e3;
-		out.y = position[0][1].template item<float>() / 1e3;
-		out.z = position[0][2].template item<float>() / 1e3;
+			auto const position = output_tuple->elements().at(0).toTensor();
+			auto const direction = output_tuple->elements().at(1).toTensor();
 
-		out.mx = direction[0][0].template item<float>();
-		out.my = direction[0][1].template item<float>();
-		out.mz = direction[0][2].template item<float>();
+			Message<Pack<Position, DirectionVector>> out{};
+			out.timestamp = data.timestamp;
+			out.src = data.src;
+			out.x = position[0][0].template item<float>() / 1e3;
+			out.y = position[0][1].template item<float>() / 1e3;
+			out.z = position[0][2].template item<float>() / 1e3;
 
-		return out;
+			out.mx = direction[0][0].template item<float>();
+			out.my = direction[0][1].template item<float>();
+			out.mz = direction[0][2].template item<float>();
+
+			return out;
+		}
+		if (output.isTensor()) {
+			auto const& position = output.toTensor();
+
+			Message<Pack<Position, DirectionVector>> out{};
+			out.timestamp = data.timestamp;
+			out.src = data.src;
+			out.x = position[0][0].template item<float>() / 1e3;
+			out.y = position[0][1].template item<float>() / 1e3;
+			out.z = position[0][2].template item<float>() / 1e3;
+
+			return out;
+		}
+
+		return {};
 	}
 };

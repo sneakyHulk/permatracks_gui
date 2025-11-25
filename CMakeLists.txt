@@ -4,6 +4,10 @@ project(permatracks)
 set(ENV{PYTORCH_ROCM_ARCH} "gfx1030")
 message(STATUS "Forcing ROCm arch: ${PYTORCH_ROCM_ARCH}")
 
+set(SHOWCASE true)
+
+message(SHOWCASE: ${SHOWCASE})
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 set(CMAKE_CXX_STANDARD 23)
 
@@ -16,6 +20,7 @@ find_package(Boost CONFIG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Torch REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 ### Ceres
 set(USE_CUDA OFF)
@@ -55,6 +60,12 @@ add_library(${PROJECT_NAME} thirdparty/implot3d/implot3d.cpp thirdparty/implot3d
 target_link_libraries(${PROJECT_NAME} PUBLIC imgui)
 target_include_directories(${PROJECT_NAME} PUBLIC thirdparty/implot3d)
 
+### ImGuiFileDialog
+project(imfiledialog)
+add_library(${PROJECT_NAME} thirdparty/imguifiledialog/ImGuiFileDialog.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC thirdparty/imguifiledialog)
+target_link_libraries(${PROJECT_NAME} PUBLIC imgui)
+
 ### Sophus
 project(sophus)
 
@@ -91,6 +102,7 @@ add_subdirectory(list_serial_devices)
 add_subdirectory(ring_buffer)
 add_subdirectory(msg)
 add_subdirectory(calibration)
+add_subdirectory(utils)
 
 ### GUI
 project(gui)
@@ -109,6 +121,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
 target_link_libraries(${PROJECT_NAME} PUBLIC implot)
 target_link_libraries(${PROJECT_NAME} PUBLIC implot3d)
 target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
+target_link_libraries(${PROJECT_NAME} PUBLIC imfiledialog)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
 target_link_libraries(${PROJECT_NAME} PUBLIC ring_buffer)
@@ -119,7 +132,9 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
 target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
 target_link_libraries(${PROJECT_NAME} PUBLIC ml)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
+target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 project(test_magnet)

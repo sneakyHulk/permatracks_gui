@@ -50,7 +50,7 @@ class TrackingTab : virtual protected SerialConnection,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
                     virtual protected MagnetSelection,
-                    virtual protected CeresOptimizerDirectionVector<41>,
+                    virtual protected CeresOptimizerDirectionVector<25>,
                     virtual protected MLOptimizer<41> {
 	std::atomic_bool error = false;
 
@@ -119,7 +119,12 @@ class TrackingTab : virtual protected SerialConnection,
 							auto const current_method = method.load();
 #if not SHOWCASE
 							if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
-								auto const result = CeresOptimizerDirectionVector::process(magnetometer_data.value());
+								Message<Array<MagneticFluxDensityData, 25>> value;
+								for (auto const& [s25, s41] : std::ranges::views::zip(value, magnetometer_data.value()) | std::ranges::views::take(25)) {
+									s25 = s41;
+								}
+
+								auto const result = CeresOptimizerDirectionVector::process(value);
 
 								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
 								continue;

@@ -4,7 +4,7 @@ project(permatracks)
 set(ENV{PYTORCH_ROCM_ARCH} "gfx1030")
 message(STATUS "Forcing ROCm arch: ${PYTORCH_ROCM_ARCH}")
 
-set(SHOWCASE true)
+set(SHOWCASE false)
 
 message(SHOWCASE: ${SHOWCASE})
 
@@ -113,7 +113,7 @@ add_executable(${PROJECT_NAME} main.cpp
         src/CalibrationTab.cpp src/Calibration.cpp
         src/ZeroingTab.cpp src/Zeroing.cpp
         src/MagnetSelectionTab.cpp src/MagnetSelection.cpp
-        src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector.cpp
+        src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector_25.cpp
         src/MiMedMagnetometerArraySerialConnectionBinary.cpp src/ERR.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})

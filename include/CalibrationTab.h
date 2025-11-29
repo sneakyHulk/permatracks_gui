@@ -6,6 +6,7 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include <chrono>
 #include <nlohmann/json.hpp>
 #include <queue>
 #include <string>
@@ -17,6 +18,15 @@
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
 #include "SerialConnection.h"
+
+inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono::seconds>> get_year_month_day_hh_mm_ss(std::chrono::system_clock::time_point const& t = std::chrono::system_clock::now()) {
+	auto const day = std::chrono::floor<std::chrono::days>(t);
+	auto const second = std::chrono::floor<std::chrono::seconds>(t - day);
+	std::chrono::year_month_day const ymd{day};
+	std::chrono::hh_mm_ss const hms{second};
+
+	return {ymd, hms};
+}
 
 class CalibrationTab : virtual protected SerialConnection,
                        virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
@@ -97,17 +107,10 @@ class CalibrationTab : virtual protected SerialConnection,
 		auto const calibrated_ = Calibration::calibrated();
 
 		if (ImGui::BeginChild("Calibration Child", ImVec2(-1, -1), true)) {
-#if SHOWCASE
 			ImGui::TextWrapped("Select a calibration file to load calibration.");
-#else
-			ImGui::TextWrapped(
-			    "Click Start Calibration, then slowly rotate and tilt the device in all possible orientations to ensure the sensor experiences a full range of magnetic field directions. When the plotted data points form a complete sphere, "
-			    "click Calculate to derive the calibration coefficients from the collected samples.");
-#endif
 
 			ImGui::Separator();
 
-#if SHOWCASE
 			if (ImGui::Button("Select Calibration", {-1, 0})) {
 				IGFD::FileDialogConfig config;
 				config.path = CMAKE_SOURCE_DIR;
@@ -138,7 +141,13 @@ class CalibrationTab : virtual protected SerialConnection,
 				// close
 				ImGuiFileDialog::Instance()->Close();
 			}
+#if not SHOWCASE
+			ImGui::TextWrapped(
+			    "Click Start Calibration, then slowly rotate and tilt the device in all possible orientations to ensure the sensor experiences a full range of magnetic field directions. When the plotted data points form a complete sphere, "
+			    "click Calculate to derive the calibration coefficients from the collected samples.");
 #endif
+
+			ImGui::Separator();
 
 			if (error_) {
 				stop_thread();
@@ -242,7 +251,26 @@ class CalibrationTab : virtual protected SerialConnection,
 
 #if not SHOWCASE
 				if (ImGui::Button("Save Cailbration", {-1, 0})) {
-					_calibrations;
+					nlohmann::json current_calibration_json;
+
+					for (auto i = 0; auto const& calibration : _calibrations) {
+						Eigen::Matrix<double, 4, 4> out = Eigen::Matrix<double, 4, 4>::Identity();
+						out.block<3, 3>(0, 0) = calibration.transformation;
+						out.block<3, 1>(0, 3) = -calibration.center;
+
+						std::stringstream name;
+
+						name << std::setw(2) << std::setfill('0') << i;
+						current_calibration_json[name.str()]["transformation"] = out;
+					}
+
+					auto [ymd, hms] = get_year_month_day_hh_mm_ss();  // from previous message
+
+					std::ostringstream oss;
+					oss << "calibration_" << ymd << "_" << std::setfill('0') << std::setw(2) << hms.hours().count() << "-" << std::setw(2) << hms.minutes().count() << "-" << std::setw(2) << hms.seconds().count() << ".json";
+
+					std::ofstream out(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "calibrations" / oss.str());
+					out << current_calibration_json.dump();
 				}
 #endif
 

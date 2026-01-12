@@ -8,6 +8,11 @@ if (APPLE)
 
     add_library(${PROJECT_NAME} src/list_serial_devices_macos.cpp)
     target_link_libraries(${PROJECT_NAME} PUBLIC ${FOUNDATION_LIBRARY} ${IOKIT_LIBRARY})
+elseif (WIN32)
+    message(STATUS "Configuring for Windows")
+
+    add_library(${PROJECT_NAME} src/list_serial_devices_windows.cpp)
+    target_link_libraries(${PROJECT_NAME} PUBLIC setupapi)
 elseif (UNIX)
     message(STATUS "Configuring for Linux")
     add_library(${PROJECT_NAME} src/list_serial_devices_linux.cpp)

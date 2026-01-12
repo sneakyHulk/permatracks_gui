@@ -103,18 +103,20 @@ add_subdirectory(ring_buffer)
 add_subdirectory(msg)
 add_subdirectory(calibration)
 add_subdirectory(utils)
+add_subdirectory(serial_connection)
+add_subdirectory(thirdparty/common)
 
 ### GUI
 project(gui)
 
 add_executable(${PROJECT_NAME} main.cpp
         src/App.cpp src/MainTabBar.cpp
-        src/SerialConnection.cpp src/ConnectionTab.cpp
+        src/ConnectionTab.cpp
         src/CalibrationTab.cpp src/Calibration.cpp
         src/ZeroingTab.cpp src/Zeroing.cpp
         src/MagnetSelectionTab.cpp src/MagnetSelection.cpp
         src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector_25.cpp
-        src/MiMedMagnetometerArraySerialConnectionBinary.cpp src/ERR.cpp)
+        src/MiMedMagnetometerArraySerialConnectionBinary.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
@@ -133,6 +135,7 @@ target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
 target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
 target_link_libraries(${PROJECT_NAME} PUBLIC ml)
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
+target_link_libraries(${PROJECT_NAME} PUBLIC serial_connection)
 target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)

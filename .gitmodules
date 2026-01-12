@@ -19,3 +19,6 @@
 [submodule "thirdparty/imguifiledialog"]
 	path = thirdparty/imguifiledialog
 	url = https://github.com/aiekick/ImGuiFileDialog.git
+[submodule "thirdparty/common"]
+	path = thirdparty/common
+	url = https://github.com/sneakyHulk/common.git

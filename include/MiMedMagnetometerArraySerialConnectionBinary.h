@@ -11,7 +11,7 @@
 #include <thread>
 
 #include "Array.h"
-#include "ERR.h"
+#include "ERROR.h"
 #include "MagneticFluxDensityData.h"
 #include "Message.h"
 #include "SerialConnection.h"

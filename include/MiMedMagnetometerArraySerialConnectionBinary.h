@@ -58,6 +58,10 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	typedef std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> MagOutput;
 	static constexpr std::size_t OutputSize = total_size;
 
+	std::uint64_t total_bytes_received = 0;
+	std::uint64_t total_message_bytes = 0;
+	std::chrono::time_point<std::chrono::system_clock> last_message;
+
 	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> push(std::function<bool()> const& running = []() { return true; }) {
 		static ring_buffer<std::uint8_t, 2 * max_message_size + 1> buffer;
 
@@ -69,6 +73,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 				std::span<std::uint8_t> const t = buffer.linear_sub_array();
 				if (auto const bytes_transferred = SerialConnection::read_some(t); bytes_transferred.has_value()) {
 					buffer.rotate(bytes_transferred.value());
+					total_bytes_received += bytes_transferred.value();
 				} else {
 					return std::unexpected(bytes_transferred.error());
 				}
@@ -105,6 +110,11 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 						out.timestamp = std::bit_cast<std::uint64_t>(std::array{buffer[++j], buffer[++j], buffer[++j], buffer[++j], buffer[++j], buffer[++j], buffer[++j], buffer[++j]});
 
 						buffer.pop(i + magnetic_flux_density_message_size);
+						total_message_bytes += magnetic_flux_density_message_size;
+						std::cout << static_cast<double>(total_message_bytes) / static_cast<double>(total_bytes_received) << std::endl;
+						auto now = std::chrono::system_clock::now();
+						std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
+						last_message = now;
 						return out;
 					}
 				}

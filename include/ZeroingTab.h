@@ -5,7 +5,12 @@
 #include <implot.h>
 #include <implot3d.h>
 
+#include <iomanip>
+#include <nlohmann/json.hpp>
+#include <nlohmann/json_fwd.hpp>
+
 #include "Calibration.h"
+#include "CalibrationTab.h"
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
@@ -195,6 +200,27 @@ class ZeroingTab : virtual protected SerialConnection,
 				if (ImGui::Button("Reset Zeroing", {-1, 0})) {
 					reset_zeroing();
 				}
+
+#if not SHOWCASE
+				if (ImGui::Button("Save Zeroing", {-1, 0})) {
+					nlohmann::json current_zeroing_json;
+
+					for (auto i = 0; auto const& zeroing : _zeroings) {
+						std::stringstream name;
+
+						name << std::setw(2) << std::setfill('0') << i++;
+						current_zeroing_json[name.str()]["zeroing"] = zeroing;
+					}
+
+					auto [ymd, hms] = get_year_month_day_hh_mm_ss();  // from previous message
+
+					std::ostringstream oss;
+					oss << "zeroing_" << ymd << "_" << std::setfill('0') << std::setw(2) << hms.hours().count() << "-" << std::setw(2) << hms.minutes().count() << "-" << std::setw(2) << hms.seconds().count() << ".json";
+
+					std::ofstream out(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "zeroings" / oss.str());
+					out << current_zeroing_json.dump();
+				}
+#endif
 
 				ImGui::End();
 				ImGui::EndChild();

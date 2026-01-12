@@ -260,7 +260,7 @@ class CalibrationTab : virtual protected SerialConnection,
 
 						std::stringstream name;
 
-						name << std::setw(2) << std::setfill('0') << i;
+						name << std::setw(2) << std::setfill('0') << i++;
 						current_calibration_json[name.str()]["transformation"] = out;
 					}
 

@@ -84,8 +84,6 @@ std::expected<void, ERR> SerialConnection::write_all(std::span<std::uint8_t cons
 	while (total_written < buffer.size()) {
 		ssize_t const bytes_written = write(_serial_port, buffer.data() + total_written, buffer.size() - total_written);
 
-		std::cout << "bytes_written: " << bytes_written << std::endl;
-
 		if (bytes_written < 0) {
 			if (errno == EAGAIN || errno == EWOULDBLOCK) {
 				if (poll(&pfd, 1, 1000) < 0) {  // 1s timeout

@@ -8,7 +8,6 @@
 #include <ranges>
 
 #include "App.h"
-#include "SerialConnection.h"
 
 int main(int, char**) {
 	App app;

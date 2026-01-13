@@ -23,7 +23,6 @@
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
-#include "SerialConnection.h"
 #include "Zeroing.h"
 
 using namespace std::chrono_literals;
@@ -45,7 +44,7 @@ void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4&
 
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
-class TrackingTab : virtual protected SerialConnection,
+class TrackingTab : virtual protected SerialConnectionBoost,
                     virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
@@ -170,7 +169,7 @@ class TrackingTab : virtual protected SerialConnection,
 
 	void render() {
 		auto const error_ = error.load();
-		auto const connected_ = SerialConnection::connected();
+		auto const connected_ = connected();
 		auto const calibrated_ = Calibration::calibrated();
 		auto const zeroed_ = Zeroing::zeroed();
 		auto const magnets_selected_ = MagnetSelection::magnets_selected();

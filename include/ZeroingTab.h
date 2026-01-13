@@ -14,10 +14,9 @@
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
-#include "SerialConnection.h"
 #include "Zeroing.h"
 
-class ZeroingTab : virtual protected SerialConnection,
+class ZeroingTab : virtual protected SerialConnectionBoost,
                    virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                    virtual protected Calibration<41>,
                    virtual protected Zeroing<41> {
@@ -76,9 +75,9 @@ class ZeroingTab : virtual protected SerialConnection,
 							continue;
 						}
 					} else {
-						if (SerialConnection::connected()) {
+						if (connected()) {
 							error_message = magnetometer_data.error().what();
-							SerialConnection::close_serial_port();
+							close_serial_port();
 
 							error.store(true);
 						} else {
@@ -103,7 +102,7 @@ class ZeroingTab : virtual protected SerialConnection,
 
 	void render() {
 		auto const error_ = error.load();
-		auto const connected_ = SerialConnection::connected();
+		auto const connected_ = connected();
 		auto const calibrated_ = Calibration::calibrated();
 		auto const zeroed_ = Zeroing::zeroed();
 

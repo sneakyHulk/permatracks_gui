@@ -19,3 +19,11 @@ target_link_libraries(${PROJECT_NAME} PUBLIC utils)
 
 add_executable(test_${PROJECT_NAME} test/main.cpp)
 target_link_libraries(test_${PROJECT_NAME} PUBLIC ${PROJECT_NAME})
+
+project(serial_connection_boost)
+
+add_library(${PROJECT_NAME} src/SerialConnectionBoost.cpp)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PUBLIC utils)

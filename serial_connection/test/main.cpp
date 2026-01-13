@@ -5,7 +5,7 @@
 
 struct test : SerialConnection {
 	test() {
-		auto open_result = open_serial_port("/dev/cu.usbserial-0001");
+		auto open_result = open_serial_port("/dev/ttyUSB0");
 		if (!open_result) {
 			std::cerr << "open_serial_port failed: " << open_result.error().what() << '\n';
 			return;

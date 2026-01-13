@@ -16,7 +16,7 @@
 #include "ERROR.h"
 #include "MagneticFluxDensityData.h"
 #include "Message.h"
-#include "SerialConnection.h"
+#include "SerialConnectionBoost.h"
 
 // Primary template: defaults to false
 template <typename T>
@@ -48,7 +48,7 @@ template <typename MagDataType, std::size_t start_index, std::size_t n_sensors>
 struct type_of<SENSOR_TYPE<MagDataType, start_index, n_sensors>> : std::type_identity<MagDataType> {};
 
 template <typename... SENSOR_TYPEs>
-requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual protected SerialConnection {
+requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual protected SerialConnectionBoost {
    protected:
 	static constexpr std::size_t total_size = (0 + ... + n_sensors_of<SENSOR_TYPEs>::value);
 	static constexpr std::size_t magnetic_flux_density_message_size = 1 + ((4 + n_sensors_of<SENSOR_TYPEs>::value * sizeof(typename type_of<SENSOR_TYPEs>::type)) + ...) + sizeof(std::uint64_t) + 2 + 1;
@@ -65,6 +65,8 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	std::uint64_t total_message_bytes = 0;
 	std::chrono::time_point<std::chrono::system_clock> last_message;
 
+	MiMedMagnetometerArraySerialConnectionBinary() = default;
+
 	std::expected<Message<Array<MagneticFluxDensityData, total_size>>, ERR> push(std::function<bool()> const& running = []() { return true; }) {
 		static std::deque<std::uint8_t> buffer1;
 		static std::deque<std::uint8_t> buffer2;
@@ -76,7 +78,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 		while (running()) {
 			std::array<std::uint8_t, 256> message;
 			std::uint64_t t1;
-			if (auto const bytes_transferred = SerialConnection::read_some(message); bytes_transferred.has_value()) {
+			if (auto const bytes_transferred = read_some(message); bytes_transferred.has_value()) {
 				t1 = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 				total_bytes_received += bytes_transferred.value();

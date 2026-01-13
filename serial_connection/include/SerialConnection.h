@@ -79,7 +79,8 @@ class SerialConnection {
 	void close_serial_port();
 	[[nodiscard]] std::expected<std::span<const char>, ERR> read_some() const;
 	[[nodiscard]] std::expected<std::size_t, ERR> read_some(std::span<std::uint8_t> buffer) const;
+	std::expected<void, ERR> write_all(std::span<std::uint8_t const> buffer) const;
 
-	Baudrate& baud() { return _baud; }
-	[[nodiscard]] bool connected() const { return _connected.load(); }
+	Baudrate& baud();
+	[[nodiscard]] bool connected() const;
 };

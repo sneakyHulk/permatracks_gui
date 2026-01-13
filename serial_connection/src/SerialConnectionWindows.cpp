@@ -1,4 +1,5 @@
 #include <windows.h>
+
 #include "SerialConnection.h"
 
 static ERR win_error() {
@@ -111,6 +112,23 @@ void SerialConnection::close_serial_port() {
 	}
 
 	return static_cast<std::size_t>(bytes_read);
+}
+
+std::expected<void, ERR> SerialConnection::write_all(std::span<std::uint8_t const> const buffer) const {
+	DWORD total_written = 0;
+
+	while (total_written < buffer.size()) {
+		DWORD bytes_written = 0;
+		BOOL success = WriteFile(_serial_port, buffer.data() + total_written, static_cast<DWORD>(buffer.size() - total_written), &bytes_written, nullptr);
+
+		if (!success) {
+			return std::unexpected(win_error());
+		}
+
+		total_written += bytes_written;
+	}
+
+	return {};
 }
 
 Baudrate& SerialConnection::baud() { return _baud; }

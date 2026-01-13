@@ -1,4 +1,5 @@
 #include <fcntl.h>
+#include <poll.h>
 #include <termios.h>
 #include <unistd.h>
 
@@ -71,3 +72,36 @@ std::expected<std::size_t, ERR> SerialConnection::read_some(std::span<std::uint8
 		return static_cast<std::size_t>(bytes_transferred);
 	}
 }
+
+std::expected<void, ERR> SerialConnection::write_all(std::span<std::uint8_t const> const buffer) const {
+	struct pollfd pfd{.fd = _serial_port, .events = POLLOUT, .revents = 0};
+
+	if (poll(&pfd, 1, 1000) < 0) {  // 1s timeout
+		return std::unexpected(ERR{errno, std::strerror(errno)});
+	}
+
+	std::size_t total_written = 0;
+	while (total_written < buffer.size()) {
+		ssize_t const bytes_written = write(_serial_port, buffer.data() + total_written, buffer.size() - total_written);
+
+		std::cout << "bytes_written: " << bytes_written << std::endl;
+
+		if (bytes_written < 0) {
+			if (errno == EAGAIN || errno == EWOULDBLOCK) {
+				if (poll(&pfd, 1, 1000) < 0) {  // 1s timeout
+					return std::unexpected(ERR{errno, std::strerror(errno)});
+				}
+
+				continue;
+			}
+			return std::unexpected(ERR{errno, std::strerror(errno)});
+		}
+
+		total_written += static_cast<std::size_t>(bytes_written);
+	}
+
+	return {};
+}
+
+Baudrate& SerialConnection::baud() { return _baud; }
+[[nodiscard]] bool SerialConnection::connected() const { return _connected.load(); }

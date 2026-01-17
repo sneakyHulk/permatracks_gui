@@ -21,7 +21,10 @@ class MLOptimizer : virtual protected MagnetSelection {
    public:
 	MLOptimizer() = default;
 
-	void set_model(std::filesystem::path&& model_path) { model = torch::jit::load(model_path.c_str(), device); }
+	void set_model(std::filesystem::path&& model_path) {
+		std::cout << "Using device: " << device << std::endl;
+		model = torch::jit::load(model_path.c_str(), device);
+	}
 
 	Message<Pack<Position, DirectionVector>> process(Message<Array<MagneticFluxDensityData, N>> const& data) {
 		std::array<float, N * 3> tensor_data;

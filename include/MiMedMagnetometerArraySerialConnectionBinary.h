@@ -74,15 +74,15 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 		out.src = "array";
 
 		while (running()) {
-			std::array<std::uint8_t, 256> message;
+			std::array<std::uint8_t, 256> tmp;
 			std::uint64_t t1;
-			if (auto const bytes_transferred = SerialConnection::read_some(message); bytes_transferred.has_value()) {
+			if (auto const bytes_transferred = SerialConnection::read_some(tmp); bytes_transferred.has_value()) {
 				t1 = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 
 				total_bytes_received += bytes_transferred.value();
-				buffer1.insert(buffer1.end(), message.begin(), message.begin() + bytes_transferred.value());
-				buffer2.insert(buffer2.end(), message.begin(), message.begin() + bytes_transferred.value());
-				buffer3.insert(buffer3.end(), message.begin(), message.begin() + bytes_transferred.value());
+				buffer1.insert(buffer1.end(), tmp.begin(), tmp.begin() + bytes_transferred.value());
+				buffer2.insert(buffer2.end(), tmp.begin(), tmp.begin() + bytes_transferred.value());
+				buffer3.insert(buffer3.end(), tmp.begin(), tmp.begin() + bytes_transferred.value());
 			} else {
 				return std::unexpected(bytes_transferred.error());
 			}

@@ -1,6 +1,7 @@
 #pragma once
 #include <MagnetSelection.h>
 #include <torch/script.h>
+#include <torch/torch.h>
 
 #include <filesystem>
 
@@ -15,11 +16,12 @@
 template <std::size_t N>
 class MLOptimizer : virtual protected MagnetSelection {
 	torch::jit::script::Module model;
+	torch::Device device = torch::cuda::device_count() > 0 ? torch::kCUDA : torch::hasMPS() ? torch::kMPS : torch::kCPU;
 
    public:
 	MLOptimizer() = default;
 
-	void set_model(std::filesystem::path&& model_path) { model = torch::jit::load(model_path.c_str(), torch::kMPS); }
+	void set_model(std::filesystem::path&& model_path) { model = torch::jit::load(model_path.c_str(), device); }
 
 	Message<Pack<Position, DirectionVector>> process(Message<Array<MagneticFluxDensityData, N>> const& data) {
 		std::array<float, N * 3> tensor_data;
@@ -29,7 +31,7 @@ class MLOptimizer : virtual protected MagnetSelection {
 			tensor_data[i++] = z * 1e6;
 		}
 
-		torch::Tensor input = torch::from_blob(tensor_data.data(), {1, N * 3}, torch::TensorOptions().dtype(torch::kFloat32)).to(torch::kMPS);
+		torch::Tensor input = torch::from_blob(tensor_data.data(), {1, N * 3}, torch::TensorOptions().dtype(torch::kFloat32)).to(device);
 
 		auto const output = model.forward({input});
 		if (output.isTuple()) {

@@ -15,7 +15,7 @@
 #include "TrackingTab.h"
 #include "ZeroingTab.h"
 
-class MainTabBar : virtual protected SerialConnectionBoost, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab, protected MagnetSelectionTab, protected TrackingTab {
+class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab, protected MagnetSelectionTab, protected TrackingTab {
 	std::string previous_active_tab = "Connection";
 	std::string active_tab = "Connection";
 	std::string new_active_tab = "Connection";

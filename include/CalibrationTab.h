@@ -17,7 +17,7 @@
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 #include "MiMedMagnetometerArraySerialConnectionBinary.h"
-#include "SerialConnectionBoost.h"
+#include "SerialConnection.h"
 
 inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono::seconds>> get_year_month_day_hh_mm_ss(std::chrono::system_clock::time_point const& t = std::chrono::system_clock::now()) {
 	auto const day = std::chrono::floor<std::chrono::days>(t);
@@ -28,7 +28,7 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 	return {ymd, hms};
 }
 
-class CalibrationTab : virtual protected SerialConnectionBoost,
+class CalibrationTab : virtual protected SerialConnection,
                        virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                        virtual protected Calibration<41> {
 	std::atomic_bool error = false;
@@ -76,9 +76,9 @@ class CalibrationTab : virtual protected SerialConnectionBoost,
 							continue;
 						}
 					} else {
-						if (connected()) {
+						if (SerialConnection::connected()) {
 							error_message = magnetometer_data.error().what();
-							close_serial_port();
+							SerialConnection::close_serial_port();
 
 							error.store(true);
 						} else {
@@ -103,7 +103,7 @@ class CalibrationTab : virtual protected SerialConnectionBoost,
 
 	void render() {
 		auto const error_ = error.load();
-		auto const connected_ = connected();
+		auto const connected_ = SerialConnection::connected();
 		auto const calibrated_ = Calibration::calibrated();
 
 		if (ImGui::BeginChild("Calibration Child", ImVec2(-1, -1), true)) {

@@ -20,6 +20,7 @@ find_package(Boost CONFIG REQUIRED)
 find_package(TBB REQUIRED)
 find_package(Eigen3 REQUIRED)
 find_package(Torch REQUIRED)
+find_package(GLOG REQUIRED)
 find_package(nlohmann_json REQUIRED)
 
 ### Ceres
@@ -29,7 +30,7 @@ find_package(nlohmann_json REQUIRED)
 # set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 # set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 # set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-# set(MINIGLOG ON CACHE BOOL "" FORCE)
+# set(MINIGLOG ON CACHE BOOL "" FORCE)      29426343932456097055
 # set(MINIGLOG_MAX_LOG_LEVEL 0 CACHE BOOL "" FORCE)
 # set(CERES_NO_GLOG ON CACHE BOOL "" FORCE)
 add_subdirectory(thirdparty/ceres)

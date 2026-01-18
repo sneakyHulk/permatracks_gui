@@ -29,8 +29,8 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 }
 
 class CalibrationTab : virtual protected SerialConnection,
-                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
-                       virtual protected Calibration<41> {
+                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, // SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,
+                       virtual protected Calibration<25> {
 	std::atomic_bool error = false;
 
 	enum class CalibrationTabState {

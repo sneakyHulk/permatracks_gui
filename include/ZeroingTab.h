@@ -18,9 +18,9 @@
 #include "Zeroing.h"
 
 class ZeroingTab : virtual protected SerialConnection,
-                   virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
-                   virtual protected Calibration<41>,
-                   virtual protected Zeroing<41> {
+                   virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, // SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,
+                   virtual protected Calibration<25>,
+                   virtual protected Zeroing<25> {
 	std::atomic_bool error = false;
 
 	enum class ZeroingTabState {
@@ -175,7 +175,7 @@ class ZeroingTab : virtual protected SerialConnection,
 				ImGui::Spacing();
 				ImGui::Separator();
 
-				constexpr int total = 41;
+				constexpr int total = 25;
 				int const cols = static_cast<int>(std::ceil(std::sqrt(total)));
 				int const rows = static_cast<int>(std::ceil(static_cast<float>(total) / cols));
 

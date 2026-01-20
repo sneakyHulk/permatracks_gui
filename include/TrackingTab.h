@@ -46,7 +46,7 @@ void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4&
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 class TrackingTab : virtual protected SerialConnection,
-                    virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>>,
+                    virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,  SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
                     virtual protected MagnetSelection,

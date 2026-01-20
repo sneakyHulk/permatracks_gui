@@ -29,10 +29,8 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 }
 
 class CalibrationTab : virtual protected SerialConnection,
-                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>>,
+                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                        virtual protected Calibration<41> {
-	std::atomic_bool error = false;
-
 	enum class CalibrationTabState {
 		NONE,
 		PLOTTING,
@@ -43,7 +41,6 @@ class CalibrationTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// CalibrationTab Data
-	std::string error_message;
 
    public:
 	CalibrationTab() {}
@@ -88,13 +85,11 @@ class CalibrationTab : virtual protected SerialConnection,
 	}
 
 	void stop_thread() {
-		state.store(CalibrationTabState::NONE);
-
-		stop_reading();
+		if (state.exchange(CalibrationTabState::NONE) != CalibrationTabState::NONE) stop_reading();
 	}
 
 	void render() {
-		auto const error_ = error.load();
+		auto const error_ = std::atomic_load(&latest_error);
 		auto const connected_ = SerialConnection::connected();
 		auto const calibrated_ = Calibration::calibrated();
 
@@ -143,16 +138,17 @@ class CalibrationTab : virtual protected SerialConnection,
 
 			if (error_) {
 				stop_thread();
+				close_serial_port();
 
 				ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
 				ImGui::Begin("ERROR", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
 
-				ImGui::TextWrapped("%s", error_message.c_str());
+				ImGui::TextWrapped("%s", error_->message.c_str());
 				ImGui::Spacing();
 				ImGui::Separator();
 
 				if (ImGui::Button("OK", {500, 0})) {
-					error.store(false);
+					std::atomic_store(&latest_error, std::shared_ptr<ERR>{nullptr});
 				}
 
 				ImGui::End();
@@ -274,9 +270,6 @@ class CalibrationTab : virtual protected SerialConnection,
 #if not SHOWCASE
 			switch (state.load()) {
 				case CalibrationTabState::NONE: {
-					// if (thread.joinable()) {
-					// 	thread.join();
-					// }
 					start_thread();
 
 					break;
@@ -320,8 +313,6 @@ class CalibrationTab : virtual protected SerialConnection,
 											y = (**current_head)[i].y;
 											z = (**current_head)[i].z;
 
-											std::cout << x << ' ' << y << ' ' << z << std::endl;
-
 											++current_head;
 										} else {
 											break;
@@ -343,7 +334,7 @@ class CalibrationTab : virtual protected SerialConnection,
 				}
 				case CalibrationTabState::CALIBRATING: {
 					if (ImGui::Button("Calculate Hard- and Soft-Iron Calibration", {-1, 0})) {
-						// stop_thread();
+						stop_thread();
 
 						auto current_head = magnetic_flux_density_messages.begin();
 						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, total_mag_sensors> output_calibration_data;

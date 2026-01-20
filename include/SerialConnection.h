@@ -1,6 +1,8 @@
 #pragma once
 
-#include <common_output.h>
+// #include <common_output.h>
+
+#define SERIALCONNECTION_USE_BOOST
 
 #ifdef SERIALCONNECTION_USE_BOOST
 #include <boost/asio.hpp>
@@ -54,7 +56,7 @@ class SerialConnection {
 	Baudrate baud = Baudrate::BAUD230400;
 
 	std::deque<std::uint8_t> data;
-	std::optional<ERR> error = std::nullopt;
+	std::shared_ptr<ERR> latest_error = nullptr;
 
 	std::uint64_t t_latest_message = 0;
 
@@ -72,14 +74,14 @@ class SerialConnection {
 #else
 		_serial_port = open(device.c_str(), O_RDWR | O_NOCTTY | O_NONBLOCK);
 		if (_serial_port == -1) {
-			common::println_error_loc(std::strerror(errno), " (", errno, ")");
+			std::cout << std::strerror(errno) << " (" << errno << ")" << std::endl;
 			return std::unexpected{ERR{errno, std::strerror(errno)}};
 		}
 
 		struct termios tty{};
 		if (tcgetattr(_serial_port, &tty) != 0) {
 			close(_serial_port);
-			common::println_error_loc(std::strerror(errno), " (", errno, ")");
+			std::cout << std::strerror(errno) << " (" << errno << ")" << std::endl;
 			return std::unexpected{ERR{errno, std::strerror(errno)}};
 		}
 
@@ -102,7 +104,7 @@ class SerialConnection {
 
 		if (tcsetattr(_serial_port, TCSANOW, &tty) != 0) {
 			close(_serial_port);
-			common::println_error_loc(std::strerror(errno), " (", errno, ")");
+			std::cout << std::strerror(errno) << " (" << errno << ")" << std::endl;
 			std::unexpected(ERR{errno, std::strerror(errno)});
 		}
 #endif
@@ -120,7 +122,7 @@ class SerialConnection {
 			_serial_port = -1;
 #endif
 		} else {
-			common::println_error_loc("state is ", expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR");
+			std::cout << "state is " << (expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR") << std::endl;
 		}
 	}
 
@@ -133,8 +135,8 @@ class SerialConnection {
 #ifdef SERIALCONNECTION_USE_BOOST
 					boost::system::error_code ec;
 					if (std::size_t const bytes_transferred = _serial_port.read_some(boost::asio::buffer(data), ec); ec) {
-						error.emplace(ERR{ec.value()});
-						common::println_error_loc(ec.what(), " (", ec.value(), ")");
+						std::atomic_store(&latest_error, std::make_shared<ERR>(ERR{ec.value(), ec.what()}));
+						std::cout << ec.what() << " (" << ec.value() << ")" << std::endl;
 						break;
 					} else if (bytes_transferred > 0) {
 						t_latest_message = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
@@ -144,7 +146,7 @@ class SerialConnection {
 					if (ssize_t const bytes_transferred = read(_serial_port, data.data(), data.size()); bytes_transferred < 0) {
 						if (errno != EAGAIN && errno != EWOULDBLOCK) {
 							error.emplace(ERR{errno, std::strerror(errno)});
-							common::println_error_loc(std::strerror(errno), " (", errno, ")");
+							std::cout << std::strerror(errno) << " (" << errno << ")" << std::endl;
 							break;
 						}
 					} else if (bytes_transferred > 0) {
@@ -156,7 +158,7 @@ class SerialConnection {
 				std::cout << "disconnected!" << std::endl;
 			});
 		} else {
-			common::println_error_loc("state is ", expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR");
+			std::cout << "state is " << (expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR") << std::endl;
 		}
 	}
 
@@ -203,13 +205,28 @@ class SerialConnection {
 			connection_thread.join();
 			//}
 		} else {
-			common::println_error_loc("state is ", expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR");
+			std::cout << "state is " << (expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR") << std::endl;
 		}
 	}
 
-	std::expected<std::span<const char>, ERR> read_some() const {
+	std::expected<std::span<const char>, ERR> read_some() {
+		static std::array<char, 128> tmp;
+
 		if (state.load() == ConnectionState::CONNECTED) {
-			static std::array<char, 128> tmp;
+#ifdef SERIALCONNECTION_USE_BOOST
+			boost::system::error_code ec;
+			std::size_t const n = _serial_port.read_some(boost::asio::buffer(tmp.data(), tmp.size()), ec);
+
+			if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
+				return std::span<const char>{tmp.data(), 0};
+			}
+
+			if (ec) {
+				return std::unexpected(ERR{ec.value(), ec.message()});
+			}
+
+			return std::span<const char>{tmp.data(), n};
+#else
 			if (ssize_t const bytes_transferred = read(_serial_port, tmp.data(), tmp.size()); bytes_transferred < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
 					return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
@@ -218,6 +235,7 @@ class SerialConnection {
 			} else {
 				return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 			}
+#endif
 		}
 
 		return std::unexpected(ERR{0, "Not connected or a read operation is already in progress."});
@@ -230,7 +248,6 @@ class SerialConnection {
 	}
 
 	bool connected() const { return state.load(std::memory_order_acquire) != ConnectionState::NONE; }
-
 
    public:
 	virtual void parse(std::span<std::uint8_t>&& data) = 0;

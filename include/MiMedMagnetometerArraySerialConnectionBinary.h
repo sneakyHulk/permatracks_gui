@@ -1,6 +1,7 @@
 #pragma once
 
 #include <boost/crc.hpp>
+#include <cstring>
 #include <iostream>
 #include <list>
 #include <memory>
@@ -11,7 +12,6 @@
 #include "MagneticFluxDensityData.h"
 #include "Message.h"
 #include "SerialConnection.h"
-#include "common_output.h"
 
 // Primary template: defaults to false
 template <typename T>

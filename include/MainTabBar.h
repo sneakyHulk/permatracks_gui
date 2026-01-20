@@ -86,7 +86,7 @@ class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected 
 
 			ImGui::EndTabItem();
 		} else {
-			//TrackingTab::stop_thread();
+			// TrackingTab::stop_thread();
 		}
 
 		ImGui::EndTabBar();

@@ -11,6 +11,8 @@
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 
+#define SERIALCONNECTION_USE_BOOST
+
 #ifdef SERIALCONNECTION_USE_BOOST
 #include <boost/asio.hpp>
 #endif
@@ -418,7 +420,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 int main() {
 	MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>> conn;
 
-	conn.open_serial_port("/dev/cu.usbserial-0001");
+	conn.open_serial_port("/dev/ttyUSB0");
 
 	conn.start_reading();
 

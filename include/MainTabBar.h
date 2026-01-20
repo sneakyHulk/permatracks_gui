@@ -15,7 +15,7 @@
 #include "TrackingTab.h"
 #include "ZeroingTab.h"
 
-class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, protected CalibrationTab, protected ZeroingTab, protected MagnetSelectionTab, protected TrackingTab {
+class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected ZeroingTab, protected MagnetSelectionTab, protected TrackingTab {
 	std::string previous_active_tab = "Connection";
 	std::string active_tab = "Connection";
 	std::string new_active_tab = "Connection";
@@ -52,7 +52,7 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 
 			ImGui::EndTabItem();
 		} else {
-			CalibrationTab::stop_thread();
+			//CalibrationTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Zeroing", nullptr, previous_active_tab == "Zeroing" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -64,7 +64,7 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 
 			ImGui::EndTabItem();
 		} else {
-			ZeroingTab::stop_thread();
+			//ZeroingTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Magnet Selection", nullptr, previous_active_tab == "Magnet Selection" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -86,7 +86,7 @@ class MainTabBar : virtual protected SerialConnection, protected ConnectionTab, 
 
 			ImGui::EndTabItem();
 		} else {
-			TrackingTab::stop_thread();
+			//TrackingTab::stop_thread();
 		}
 
 		ImGui::EndTabBar();

@@ -24,7 +24,6 @@
 #include <cstring>
 #include <deque>
 #include <expected>
-#include <forward_list>
 #include <iostream>
 #include <list>
 #include <memory>

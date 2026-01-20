@@ -18,9 +18,9 @@
 #include "Zeroing.h"
 
 class ZeroingTab : virtual protected SerialConnection,
-                   virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, // SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,
-                   virtual protected Calibration<25>,
-                   virtual protected Zeroing<25> {
+                   virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>>,
+                   virtual protected Calibration<41>,
+                   virtual protected Zeroing<41> {
 	std::atomic_bool error = false;
 
 	enum class ZeroingTabState {
@@ -35,64 +35,55 @@ class ZeroingTab : virtual protected SerialConnection,
 	// ZeroingTab Data
 	std::string error_message;
 
-	struct MagneticFluxDensityDataNode {
-		std::shared_ptr<MagneticFluxDensityDataNode> next;
-		Message<Array<MagneticFluxDensityData, OutputSize>> magnetic_flux_density_data;
-		explicit MagneticFluxDensityDataNode(std::shared_ptr<MagneticFluxDensityDataNode> const& next, Message<Array<MagneticFluxDensityData, OutputSize>> const& magnetic_flux_density_data)
-		    : next(next), magnetic_flux_density_data(magnetic_flux_density_data) {}
-	};
-	std::shared_ptr<MagneticFluxDensityDataNode> plot_data = nullptr;
-	std::shared_ptr<MagneticFluxDensityDataNode> zeroing_data = nullptr;
-
    public:
 	ZeroingTab() {}
 	~ZeroingTab() { stop_thread(); }
 
-	void start_thread() {
-		if (auto expected = ZeroingTabState::NONE; state.compare_exchange_strong(expected, ZeroingTabState::PLOTTING)) {
-			thread = std::thread([this]() {
-				std::cout << "Zeroing Thread started" << std::endl;
-
-				while (true) {
-					auto current_state = state.load();
-
-					if (auto magnetometer_data = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); magnetometer_data.has_value()) {
-						for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetometer_data.value())) {
-							Eigen::Vector<double, 3> tmp;
-							tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
-
-							tmp = calibration.transformation * (tmp - calibration.center);
-							magnetometer_datapoint.x = tmp.x();
-							magnetometer_datapoint.y = tmp.y();
-							magnetometer_datapoint.z = tmp.z();
-						}
-
-						if (current_state == ZeroingTabState::PLOTTING) {
-							std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
-							continue;
-						}
-						if (current_state == ZeroingTabState::ZEROING) {
-							std::atomic_store_explicit(&zeroing_data, std::make_shared<MagneticFluxDensityDataNode>(zeroing_data, magnetometer_data.value()), std::memory_order_release);
-							continue;
-						}
-					} else {
-						if (SerialConnection::connected()) {
-							error_message = magnetometer_data.error().what();
-							SerialConnection::close_serial_port();
-
-							error.store(true);
-						} else {
-							state.store(ZeroingTabState::NONE);
-						}
-					}
-
-					break;
-				}
-
-				std::cout << "Zeroing Thread finished" << std::endl;
-			});
-		}
-	}
+	// void start_thread() {
+	//	if (auto expected = ZeroingTabState::NONE; state.compare_exchange_strong(expected, ZeroingTabState::PLOTTING)) {
+	//		thread = std::thread([this]() {
+	//			std::cout << "Zeroing Thread started" << std::endl;
+	//
+	//			while (true) {
+	//				auto current_state = state.load();
+	//
+	//				if (auto magnetometer_data = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); magnetometer_data.has_value()) {
+	//					for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetometer_data.value())) {
+	//						Eigen::Vector<double, 3> tmp;
+	//						tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+	//
+	//						tmp = calibration.transformation * (tmp - calibration.center);
+	//						magnetometer_datapoint.x = tmp.x();
+	//						magnetometer_datapoint.y = tmp.y();
+	//						magnetometer_datapoint.z = tmp.z();
+	//					}
+	//
+	//					if (current_state == ZeroingTabState::PLOTTING) {
+	//						std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
+	//						continue;
+	//					}
+	//					if (current_state == ZeroingTabState::ZEROING) {
+	//						std::atomic_store_explicit(&zeroing_data, std::make_shared<MagneticFluxDensityDataNode>(zeroing_data, magnetometer_data.value()), std::memory_order_release);
+	//						continue;
+	//					}
+	//				} else {
+	//					if (SerialConnection::connected()) {
+	//						error_message = magnetometer_data.error().what();
+	//						SerialConnection::close_serial_port();
+	//
+	//						error.store(true);
+	//					} else {
+	//						state.store(ZeroingTabState::NONE);
+	//					}
+	//				}
+	//
+	//				break;
+	//			}
+	//
+	//			std::cout << "Zeroing Thread finished" << std::endl;
+	//		});
+	//	}
+	//}
 
 	void stop_thread() {
 		state.store(ZeroingTabState::NONE);
@@ -175,16 +166,15 @@ class ZeroingTab : virtual protected SerialConnection,
 				ImGui::Spacing();
 				ImGui::Separator();
 
-				constexpr int total = 25;
-				int const cols = static_cast<int>(std::ceil(std::sqrt(total)));
-				int const rows = static_cast<int>(std::ceil(static_cast<float>(total) / cols));
+				int const cols = static_cast<int>(std::ceil(std::sqrt(total_mag_sensors)));
+				int const rows = static_cast<int>(std::ceil(static_cast<float>(total_mag_sensors) / cols));
 
 				if (ImGui::BeginTable("Grid", cols, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg)) {
 					for (auto row = 0, index = 0; row < rows; ++row) {
 						ImGui::TableNextRow();
 						for (int col = 0; col < cols; ++col) {
 							ImGui::TableSetColumnIndex(col);
-							if (index < total) {
+							if (index < total_mag_sensors) {
 								auto& p = _zeroings[index++];  // assume p is callable or has operator()(i)
 								ImGui::Text("x: %.2e", p(0));
 								ImGui::Text("y: %.2e", p(1));
@@ -229,22 +219,22 @@ class ZeroingTab : virtual protected SerialConnection,
 
 			switch (state.load()) {
 				case ZeroingTabState::NONE: {
-					if (thread.joinable()) {
-						thread.join();
-					}
-					start_thread();
+					// if (thread.joinable()) {
+					// 	thread.join();
+					// }
+					// start_thread();
 					break;
 				}
 				case ZeroingTabState::PLOTTING: {
 					if (ImGui::Button("Start Zeroing", {-1, 0})) {
-						zeroing_data = nullptr;
+						magnetic_flux_density_messages.clear();
 
 						state.store(ZeroingTabState::ZEROING);
 					}
 
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&plot_data, std::memory_order_acquire);
-						for (auto i = 0; i < OutputSize; ++i) {
+						auto current_head = magnetic_flux_density_messages.begin();
+						for (auto i = 0; i < total_mag_sensors; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImVec2 avail = ImGui::GetContentRegionAvail();
 
@@ -273,20 +263,18 @@ class ZeroingTab : virtual protected SerialConnection,
 									std::array<double, 10> ys{};
 									std::array<double, 10> zs{};
 									for (auto const& [x, y, z] : std::ranges::views::zip(xs, ys, zs)) {
-										if (current_head) {
-											x = current_head->magnetic_flux_density_data[i].x;
-											y = current_head->magnetic_flux_density_data[i].y;
-											z = current_head->magnetic_flux_density_data[i].z;
+										if (current_head != magnetic_flux_density_messages.end()) {
+											x = (**current_head)[i].x;
+											y = (**current_head)[i].y;
+											z = (**current_head)[i].z;
 
-											current_head = current_head->next;
+											++current_head;
 										} else {
 											break;
 										}
 									}
 
-									if (current_head) {
-										current_head->next = nullptr;
-									}
+									magnetic_flux_density_messages.erase(current_head, magnetic_flux_density_messages.end());
 
 									ImPlot::PlotScatter("X-Y Projection", xs.data(), ys.data(), xs.size());
 									ImPlot::PlotScatter("Y-Z Projection", ys.data(), zs.data(), ys.size());
@@ -305,11 +293,11 @@ class ZeroingTab : virtual protected SerialConnection,
 					if (ImGui::Button("Calculate Zeroing", {-1, 0})) {
 						stop_thread();
 
-						auto current_head = std::atomic_load_explicit(&zeroing_data, std::memory_order_acquire);
-						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> output_zeroing_data;
+						auto current_head = magnetic_flux_density_messages.begin();
+						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, total_mag_sensors> output_zeroing_data;
 
-						for (current_head; current_head; current_head = current_head->next) {
-							for (auto const& [magnetic_flux_density_datapoint, output_zeroing_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, output_zeroing_data)) {
+						for (; current_head != magnetic_flux_density_messages.end(); ++current_head) {
+							for (auto const& [magnetic_flux_density_datapoint, output_zeroing_datapoint] : std::ranges::views::zip(**current_head, output_zeroing_data)) {
 								auto& [xs, ys, zs] = output_zeroing_datapoint;
 
 								xs.push_back(magnetic_flux_density_datapoint.x);
@@ -321,8 +309,8 @@ class ZeroingTab : virtual protected SerialConnection,
 						zero(output_zeroing_data);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&zeroing_data, std::memory_order_acquire);
-						for (auto i = 0; i < OutputSize; ++i) {
+						auto current_head = magnetic_flux_density_messages.begin();
+						for (auto i = 0; i < total_mag_sensors; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImVec2 avail = ImGui::GetContentRegionAvail();
 
@@ -351,10 +339,10 @@ class ZeroingTab : virtual protected SerialConnection,
 									std::vector<double> ys{};
 									std::vector<double> zs{};
 
-									for (current_head; current_head; current_head = current_head->next) {
-										xs.push_back(current_head->magnetic_flux_density_data[i].x);
-										ys.push_back(current_head->magnetic_flux_density_data[i].y);
-										zs.push_back(current_head->magnetic_flux_density_data[i].z);
+									for (; current_head != magnetic_flux_density_messages.end(); ++current_head) {
+										xs.push_back((**current_head)[i].x);
+										ys.push_back((**current_head)[i].y);
+										zs.push_back((**current_head)[i].z);
 									}
 
 									ImPlot::PlotScatter("X-Y Projection", xs.data(), ys.data(), xs.size());

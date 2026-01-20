@@ -127,6 +127,7 @@ add_executable(${PROJECT_NAME} main.cpp
         src/ZeroingTab.cpp src/Zeroing.cpp
         src/MagnetSelectionTab.cpp src/MagnetSelection.cpp
         src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector_25.cpp
+        src/SerialConnection.cpp
         src/MiMedMagnetometerArraySerialConnectionBinary.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
@@ -145,6 +146,8 @@ target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
 target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
 target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
 target_link_libraries(${PROJECT_NAME} PUBLIC ml)
+target_link_libraries(${PROJECT_NAME} PUBLIC utils)
+target_link_libraries(${PROJECT_NAME} PUBLIC common)
 target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
 target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)

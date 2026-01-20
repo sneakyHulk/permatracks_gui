@@ -3,6 +3,7 @@
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
 
+#include <atomic>
 #include <string>
 
 #include "SerialConnection.h"
@@ -142,7 +143,7 @@ class ConnectionTab : virtual protected SerialConnection {
 			ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
 			ImGui::Begin("Connection", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
 
-			ImGui::TextWrapped("Connected to %s with baud rate %u.", devices[selected_index].device.c_str(), SerialConnection::baud());
+			ImGui::TextWrapped("Connected to %s with baud rate %u.", devices[selected_index].device.c_str(), baud);
 			ImGui::Spacing();
 			ImGui::Separator();
 
@@ -190,30 +191,30 @@ class ConnectionTab : virtual protected SerialConnection {
 		ImGui::SetCursorPosX(ImGui::GetWindowContentRegionMax().x - ImGui::CalcTextSize("Connect").x - ImGui::CalcTextSize("Tap").x - 150 - ImGui::GetStyle().FramePadding.x * 6);
 
 		ImGui::SetNextItemWidth(150);
-		if (ImGui::BeginCombo("##combo", std::to_string(SerialConnection::baud()).c_str())) {
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD9600).c_str(), SerialConnection::baud() == Baudrate::BAUD9600)) {
-				SerialConnection::baud() = Baudrate::BAUD9600;
+		if (ImGui::BeginCombo("##combo", std::to_string(baud).c_str())) {
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD9600).c_str(), baud == Baudrate::BAUD9600)) {
+				baud = Baudrate::BAUD9600;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD19200).c_str(), SerialConnection::baud() == Baudrate::BAUD19200)) {
-				SerialConnection::baud() = Baudrate::BAUD19200;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD19200).c_str(), baud == Baudrate::BAUD19200)) {
+				baud = Baudrate::BAUD19200;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD38400).c_str(), SerialConnection::baud() == Baudrate::BAUD38400)) {
-				SerialConnection::baud() = Baudrate::BAUD38400;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD38400).c_str(), baud == Baudrate::BAUD38400)) {
+				baud = Baudrate::BAUD38400;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD57600).c_str(), SerialConnection::baud() == Baudrate::BAUD57600)) {
-				SerialConnection::baud() = Baudrate::BAUD57600;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD57600).c_str(), baud == Baudrate::BAUD57600)) {
+				baud = Baudrate::BAUD57600;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD115200).c_str(), SerialConnection::baud() == Baudrate::BAUD115200)) {
-				SerialConnection::baud() = Baudrate::BAUD115200;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD115200).c_str(), baud == Baudrate::BAUD115200)) {
+				baud = Baudrate::BAUD115200;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD230400).c_str(), SerialConnection::baud() == Baudrate::BAUD230400)) {
-				SerialConnection::baud() = Baudrate::BAUD230400;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD230400).c_str(), baud == Baudrate::BAUD230400)) {
+				baud = Baudrate::BAUD230400;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD460800).c_str(), SerialConnection::baud() == Baudrate::BAUD460800)) {
-				SerialConnection::baud() = Baudrate::BAUD460800;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD460800).c_str(), baud == Baudrate::BAUD460800)) {
+				baud = Baudrate::BAUD460800;
 			}
-			if (ImGui::Selectable(std::to_string(Baudrate::BAUD921600).c_str(), SerialConnection::baud() == Baudrate::BAUD921600)) {
-				SerialConnection::baud() = Baudrate::BAUD921600;
+			if (ImGui::Selectable(std::to_string(Baudrate::BAUD921600).c_str(), baud == Baudrate::BAUD921600)) {
+				baud = Baudrate::BAUD921600;
 			}
 			ImGui::EndCombo();
 		}

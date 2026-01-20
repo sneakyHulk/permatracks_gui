@@ -29,8 +29,8 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 }
 
 class CalibrationTab : virtual protected SerialConnection,
-                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, // SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,
-                       virtual protected Calibration<25> {
+                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>>,
+                       virtual protected Calibration<41> {
 	std::atomic_bool error = false;
 
 	enum class CalibrationTabState {
@@ -45,60 +45,52 @@ class CalibrationTab : virtual protected SerialConnection,
 	// CalibrationTab Data
 	std::string error_message;
 
-	struct MagneticFluxDensityDataNode {
-		std::shared_ptr<MagneticFluxDensityDataNode> next;
-		Message<Array<MagneticFluxDensityData, OutputSize>> magnetic_flux_density_data;
-		explicit MagneticFluxDensityDataNode(std::shared_ptr<MagneticFluxDensityDataNode> const& next, Message<Array<MagneticFluxDensityData, OutputSize>> const& magnetic_flux_density_data)
-		    : next(next), magnetic_flux_density_data(magnetic_flux_density_data) {}
-	};
-	std::shared_ptr<MagneticFluxDensityDataNode> plot_data = nullptr;
-	std::shared_ptr<MagneticFluxDensityDataNode> calibration_data = nullptr;
-
    public:
 	CalibrationTab() {}
 	~CalibrationTab() { stop_thread(); }
 
 	void start_thread() {
 		if (auto expected = CalibrationTabState::NONE; state.compare_exchange_strong(expected, CalibrationTabState::PLOTTING)) {
-			thread = std::thread([this]() {
-				std::cout << "Calibration Thread started" << std::endl;
+			start_reading();
 
-				while (true) {
-					auto current_state = state.load();
-
-					if (auto magnetometer_data = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); magnetometer_data.has_value()) {
-						if (current_state == CalibrationTabState::PLOTTING) {
-							std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
-							continue;
-						}
-						if (current_state == CalibrationTabState::CALIBRATING) {
-							std::atomic_store_explicit(&calibration_data, std::make_shared<MagneticFluxDensityDataNode>(calibration_data, magnetometer_data.value()), std::memory_order_release);
-							continue;
-						}
-					} else {
-						if (SerialConnection::connected()) {
-							error_message = magnetometer_data.error().what();
-							SerialConnection::close_serial_port();
-
-							error.store(true);
-						} else {
-							state.store(CalibrationTabState::NONE);
-						}
-					}
-
-					break;
-				}
-
-				std::cout << "Calibration Thread finished" << std::endl;
-			});
+			// thread = std::thread([this]() {
+			//	std::cout << "Calibration Thread started" << std::endl;
+			//
+			//	while (true) {
+			//		auto current_state = state.load();
+			//
+			//		if (auto magnetometer_data = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); magnetometer_data.has_value()) {
+			//			if (current_state == CalibrationTabState::PLOTTING) {
+			//				std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
+			//				continue;
+			//			}
+			//			if (current_state == CalibrationTabState::CALIBRATING) {
+			//				std::atomic_store_explicit(&calibration_data, std::make_shared<MagneticFluxDensityDataNode>(calibration_data, magnetometer_data.value()), std::memory_order_release);
+			//				continue;
+			//			}
+			//		} else {
+			//			if (SerialConnection::connected()) {
+			//				error_message = magnetometer_data.error().what();
+			//				SerialConnection::close_serial_port();
+			//
+			//				error.store(true);
+			//			} else {
+			//				state.store(CalibrationTabState::NONE);
+			//			}
+			//		}
+			//
+			//		break;
+			//	}
+			//
+			//	std::cout << "Calibration Thread finished" << std::endl;
+			//});
 		}
 	}
 
 	void stop_thread() {
 		state.store(CalibrationTabState::NONE);
-		if (thread.joinable()) {
-			thread.join();
-		}
+
+		stop_reading();
 	}
 
 	void render() {
@@ -282,22 +274,22 @@ class CalibrationTab : virtual protected SerialConnection,
 #if not SHOWCASE
 			switch (state.load()) {
 				case CalibrationTabState::NONE: {
-					if (thread.joinable()) {
-						thread.join();
-					}
+					// if (thread.joinable()) {
+					// 	thread.join();
+					// }
 					start_thread();
 
 					break;
 				}
 				case CalibrationTabState::PLOTTING: {
 					if (ImGui::Button("Start Hard- and Soft-Iron Calibration", {-1, 0})) {
-						calibration_data = nullptr;
+						magnetic_flux_density_messages.clear();
 
 						state.store(CalibrationTabState::CALIBRATING);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&plot_data, std::memory_order_acquire);
-						for (auto i = 0; i < OutputSize; ++i) {
+						auto current_head = magnetic_flux_density_messages.begin();
+						for (auto i = 0; i < total_mag_sensors; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
 								// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_PlotPadding, {-50.0f, -50.0f});
@@ -323,20 +315,20 @@ class CalibrationTab : virtual protected SerialConnection,
 									std::array<double, 10> ys{};
 									std::array<double, 10> zs{};
 									for (auto const& [x, y, z] : std::ranges::views::zip(xs, ys, zs)) {
-										if (current_head) {
-											x = current_head->magnetic_flux_density_data[i].x;
-											y = current_head->magnetic_flux_density_data[i].y;
-											z = current_head->magnetic_flux_density_data[i].z;
+										if (current_head != magnetic_flux_density_messages.end()) {
+											x = (**current_head)[i].x;
+											y = (**current_head)[i].y;
+											z = (**current_head)[i].z;
 
-											current_head = current_head->next;
+											std::cout << x << ' ' << y << ' ' << z << std::endl;
+
+											++current_head;
 										} else {
 											break;
 										}
 									}
 
-									if (current_head) {
-										current_head->next = nullptr;
-									}
+									magnetic_flux_density_messages.erase(current_head, magnetic_flux_density_messages.end());
 
 									ImPlot3D::PlotScatter("MagData", xs.data(), ys.data(), zs.data(), xs.size());
 									ImPlot3D::EndPlot();
@@ -351,13 +343,13 @@ class CalibrationTab : virtual protected SerialConnection,
 				}
 				case CalibrationTabState::CALIBRATING: {
 					if (ImGui::Button("Calculate Hard- and Soft-Iron Calibration", {-1, 0})) {
-						stop_thread();
+						// stop_thread();
 
-						auto current_head = std::atomic_load_explicit(&calibration_data, std::memory_order_acquire);
-						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, OutputSize> output_calibration_data;
+						auto current_head = magnetic_flux_density_messages.begin();
+						std::array<std::tuple<std::vector<double>, std::vector<double>, std::vector<double>>, total_mag_sensors> output_calibration_data;
 
-						for (current_head; current_head; current_head = current_head->next) {
-							for (auto const& [magnetic_flux_density_datapoint, output_calibration_datapoint] : std::ranges::views::zip(current_head->magnetic_flux_density_data, output_calibration_data)) {
+						for (; current_head != magnetic_flux_density_messages.end(); ++current_head) {
+							for (auto const& [magnetic_flux_density_datapoint, output_calibration_datapoint] : std::ranges::views::zip(**current_head, output_calibration_data)) {
 								auto& [xs, ys, zs] = output_calibration_datapoint;
 
 								xs.push_back(magnetic_flux_density_datapoint.x);
@@ -369,8 +361,8 @@ class CalibrationTab : virtual protected SerialConnection,
 						calibrate(output_calibration_data);
 					}
 					if (ImGui::BeginTabBar("Sensor Tabbar")) {
-						auto current_head = std::atomic_load_explicit(&calibration_data, std::memory_order_acquire);
-						for (auto i = 0; i < OutputSize; ++i) {
+						auto current_head = magnetic_flux_density_messages.begin();
+						for (auto i = 0; i < total_mag_sensors; ++i) {
 							if (std::string sensor_tab = std::string("S") + std::to_string(i); ImGui::BeginTabItem(sensor_tab.c_str())) {
 								ImPlot3D::PushStyleVar(ImPlot3DStyleVar_MarkerSize, 1.0f);
 								// ImPlot3D::PushStyleVar(ImPlot3DStyleVar_PlotPadding, {-50.0f, -50.0f});
@@ -396,10 +388,10 @@ class CalibrationTab : virtual protected SerialConnection,
 									std::vector<double> ys{};
 									std::vector<double> zs{};
 
-									for (current_head; current_head; current_head = current_head->next) {
-										xs.push_back(current_head->magnetic_flux_density_data[i].x);
-										ys.push_back(current_head->magnetic_flux_density_data[i].y);
-										zs.push_back(current_head->magnetic_flux_density_data[i].z);
+									for (; current_head != magnetic_flux_density_messages.end(); ++current_head) {
+										xs.push_back((**current_head)[i].x);
+										ys.push_back((**current_head)[i].y);
+										zs.push_back((**current_head)[i].z);
 									}
 
 									ImPlot3D::PlotScatter("MagData", xs.data(), ys.data(), zs.data(), xs.size());

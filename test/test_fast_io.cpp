@@ -11,9 +11,7 @@
 #include "MagneticFluxDensityDataRawLIS3MDL.h"
 #include "MagneticFluxDensityDataRawMMC5983MA.h"
 
-// #define USE_BOOST
-
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 #include <boost/asio.hpp>
 #endif
 
@@ -50,7 +48,7 @@ class SerialConnection {
 
 	std::thread connection_thread;
 
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 	boost::asio::io_context _context;
 	boost::asio::serial_port _serial_port;
 #else
@@ -61,15 +59,17 @@ class SerialConnection {
 	std::deque<std::uint8_t> data;
 	std::optional<ERR> error = std::nullopt;
 
+	std::uint64_t t_latest_message = 0;
+
    public:
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 	explicit SerialConnection() : _serial_port(_context) { std::cout << "Connection()" << std::endl; }
 #else
 	explicit SerialConnection() { std::cout << "Connection()" << std::endl; }
 #endif
 
 	std::expected<void, ERR> open_serial_port(std::string const& device) {
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 		_serial_port.open(device);
 		_serial_port.set_option(boost::asio::serial_port_base::baud_rate(230400));
 #else
@@ -116,7 +116,7 @@ class SerialConnection {
 
 	void close_serial_port() {
 		if (auto expected = ConnectionState::CONNECTED; state.compare_exchange_strong(expected, ConnectionState::NONE)) {
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 			_serial_port.close();
 #else
 			close(_serial_port);
@@ -133,13 +133,14 @@ class SerialConnection {
 				std::cout << "connected" << std::endl;
 				std::array<std::uint8_t, 512> data;
 				while (state.load() == ConnectionState::READING) {
-#ifdef USE_BOOST
+#ifdef SERIALCONNECTION_USE_BOOST
 					boost::system::error_code ec;
 					if (std::size_t const bytes_transferred = _serial_port.read_some(boost::asio::buffer(data), ec); ec) {
 						error.emplace(ERR{ec.value()});
 						common::println_error_loc(ec.what(), " (", ec.value(), ")");
 						break;
 					} else if (bytes_transferred > 0) {
+						t_latest_message = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 						parse(std::span{data.data(), bytes_transferred});
 					}
 #else
@@ -150,6 +151,7 @@ class SerialConnection {
 							break;
 						}
 					} else if (bytes_transferred > 0) {
+						t_latest_message = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
 						parse(std::span{data.data(), static_cast<std::size_t>(bytes_transferred)});
 					}
 #endif
@@ -159,6 +161,43 @@ class SerialConnection {
 		} else {
 			common::println_error_loc("state is ", expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR");
 		}
+	}
+
+	std::expected<void, ERR> write_all(std::span<std::uint8_t const> const buffer) {
+#ifdef SERIALCONNECTION_USE_BOOST
+		boost::system::error_code ec;
+		std::size_t n = boost::asio::write(_serial_port, boost::asio::buffer(buffer.data(), buffer.size()), ec);
+
+		if (ec) {
+			return std::unexpected(ERR{ec.value(), ec.message()});
+		}
+#else
+		struct pollfd pfd{.fd = _serial_port, .events = POLLOUT, .revents = 0};
+
+		if (poll(&pfd, 1, 100) < 0) {  // up to 100ms timeout
+			return std::unexpected(ERR{errno, std::strerror(errno)});
+		}
+
+		std::size_t total_written = 0;
+		while (total_written < buffer.size()) {
+			ssize_t const bytes_written = write(_serial_port, buffer.data() + total_written, buffer.size() - total_written);
+
+			if (bytes_written < 0) {
+				if (errno == EAGAIN || errno == EWOULDBLOCK) {
+					if (poll(&pfd, 1, 100) < 0) {  // up to 100ms timeout
+						return std::unexpected(ERR{errno, std::strerror(errno)});
+					}
+
+					continue;
+				}
+				return std::unexpected(ERR{errno, std::strerror(errno)});
+			}
+
+			total_written += static_cast<std::size_t>(bytes_written);
+		}
+#endif
+
+		return {};
 	}
 
 	void stop_reading() {
@@ -171,7 +210,7 @@ class SerialConnection {
 		}
 	}
 
-	virtual ~SerialConnection() {
+	~SerialConnection() {
 		stop_reading();
 		close_serial_port();
 	}
@@ -224,10 +263,54 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 
 	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_size>>>> magnetic_flux_density_messages;
 
+#ifdef DEBUG
 	std::uint64_t total_bytes_received = 0;
-	std::uint64_t total_message_bytes = 0;
-	std::uint64_t total_message_bytes2 = 0;
+	std::uint64_t total_message_bytes_timestamp_message = 0;
+	std::uint64_t total_message_bytes_magnetic_flux_density_message = 0;
+	std::uint64_t total_message_bytes_info_message = 0;
 	std::chrono::time_point<std::chrono::system_clock> last_message;
+#endif
+
+	void parse_latest_timestamp_message() {
+		for (int i = buffer.size() - 1; i >= index_timestamp_message + timestamp_message_size - 1; --i) {
+			if (int const frame_start = i + 1 - timestamp_message_size, frame_end = i; buffer[frame_end] == 'T' && buffer[frame_start] == 'T') {
+				boost::crc_optimal<8, 0x07, 0x00, 0x00, false, false> crc;
+				for (auto j = 1; j <= timestamp_message_size - 3; ++j) {
+					crc.process_byte(buffer[frame_start + j]);
+				}
+
+				if (std::uint8_t const crc0 = crc.checksum() & 0xFF; crc0 == buffer[frame_end - 1]) {
+					std::cout << "Attempting time synchronization..." << std::endl;
+					std::uint64_t const t2 = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+					std::array<std::uint8_t, timestamp_message_size> message;
+
+					message[0] = 'T';
+					std::memcpy(message.data() + 1, &t_latest_message, sizeof(t_latest_message));
+					std::memcpy(message.data() + 1 + sizeof(t_latest_message), &t2, sizeof(t2));
+					crc.process_block(message.data() + 1, message.data() + 1 + sizeof(t_latest_message) + sizeof(t2));
+					message[timestamp_message_size - 2] = crc.checksum();
+					message[timestamp_message_size - 1] = 'T';
+
+					if (auto const ret = write_all(message); !ret.has_value()) {
+						std::cout << "Attempt failed." << std::endl;
+					}
+
+#ifdef DEBUG
+					total_message_bytes_timestamp_message += timestamp_message_size;
+					std::cout << static_cast<double>(total_message_bytes_timestamp_message) / static_cast<double>(total_bytes_received) << std::endl;
+					auto const now = std::chrono::system_clock::now();
+					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
+					last_message = now;
+#endif
+
+					break;  // latest timestamp parsed -> no need to parse another one
+				}
+			}
+		}
+
+		index_timestamp_message = buffer.size() - std::min(buffer.size(), static_cast<std::size_t>(timestamp_message_size - 1));
+	}
 
 	void parse_magnetic_flux_density_messages() {
 		for (; index_magnetic_flux_density_message + magnetic_flux_density_message_size <= buffer.size(); ++index_magnetic_flux_density_message) {
@@ -267,11 +350,13 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					index_magnetic_flux_density_message += 3;
 					magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_size>>>(out));
 
-					total_message_bytes2 += magnetic_flux_density_message_size;
-					std::cout << static_cast<double>(total_message_bytes2) / static_cast<double>(total_bytes_received) << std::endl;
+#ifdef DEBUG
+					total_message_bytes_magnetic_flux_density_message += magnetic_flux_density_message_size;
+					std::cout << static_cast<double>(total_message_bytes_magnetic_flux_density_message) / static_cast<double>(total_bytes_received) << std::endl;
 					auto const now = std::chrono::system_clock::now();
 					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
 					last_message = now;
+#endif
 				}
 			}
 		}
@@ -290,15 +375,16 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					if (std::uint8_t const crc0 = crc.checksum() & 0xFF; crc0 == buffer[frame_end - 2]) {
 						std::string info_message(buffer.begin() + frame_start + 1, buffer.begin() + frame_end - 2);
 
-						std::cout << i << " " << static_cast<char>(buffer[0]) << " " << static_cast<char>(buffer[1]) << info_message << std::endl;
+						std::cout << info_message << std::endl;
 						index_info_message = i + 1;
 						i += min_info_message_size;
-
-						total_message_bytes += length;
-						std::cout << static_cast<double>(total_message_bytes) / static_cast<double>(total_bytes_received) << std::endl;
+#ifdef DEBUG
+						total_message_bytes_info_message += length;
+						std::cout << static_cast<double>(total_message_bytes_info_message) / static_cast<double>(total_bytes_received) << std::endl;
 						auto const now = std::chrono::system_clock::now();
 						std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
 						last_message = now;
+#endif
 					}
 				}
 			}
@@ -307,19 +393,27 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	}
 
 	void parse(std::span<std::uint8_t>&& data) override {
-		buffer.append_range(data);
+#ifdef DEBUG
 		total_bytes_received += data.size();
+#endif
 
+		buffer.append_range(data);
+
+		parse_latest_timestamp_message();
 		parse_magnetic_flux_density_messages();
 		parse_info_messages();
 
-		auto const remove = std::min(index_magnetic_flux_density_message, index_info_message);
+		auto const remove = std::min({index_timestamp_message, index_magnetic_flux_density_message, index_info_message});
 
 		buffer.erase(buffer.begin(), buffer.begin() + remove);
 
-		index_info_message -= remove;
+		index_timestamp_message -= remove;
 		index_magnetic_flux_density_message -= remove;
+		index_info_message -= remove;
 	}
+
+   public:
+	~MiMedMagnetometerArraySerialConnectionBinary() { std::cout << "~MiMedMagnetometerArraySerialConnectionBinary()" << std::endl; }
 };
 
 int main() {
@@ -330,8 +424,6 @@ int main() {
 	conn.start_reading();
 
 	std::this_thread::sleep_for(std::chrono::milliseconds(10000));
-
-	std::cout << "test" << std::endl;
 }
 
 // struct test {

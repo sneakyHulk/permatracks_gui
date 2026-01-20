@@ -212,10 +212,10 @@ template <typename... SENSOR_TYPEs>
 requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual public SerialConnection {
    protected:
 	static constexpr std::size_t total_size = (0 + ... + n_sensors_of<SENSOR_TYPEs>::value);
-	static constexpr std::size_t magnetic_flux_density_message_size = 1 + ((4 + n_sensors_of<SENSOR_TYPEs>::value * sizeof(typename type_of<SENSOR_TYPEs>::type)) + ...) + sizeof(std::uint64_t) + 2 + 1;
-	static constexpr std::size_t timestamp_message_size = 1 + 8 + 8 + 1 + 1;
-	static constexpr std::size_t min_info_message_size = 1 + 0 + 1 + 1 + 1;
-	static constexpr std::size_t max_info_message_size = 1 + 255 + 1 + 1 + 1;
+	static constexpr int magnetic_flux_density_message_size = 1 + ((4 + n_sensors_of<SENSOR_TYPEs>::value * sizeof(typename type_of<SENSOR_TYPEs>::type)) + ...) + sizeof(std::uint64_t) + 2 + 1;
+	static constexpr int timestamp_message_size = 1 + 8 + 8 + 1 + 1;
+	static constexpr int min_info_message_size = 1 + 0 + 1 + 1 + 1;
+	static constexpr int max_info_message_size = 1 + 255 + 1 + 1 + 1;
 	std::deque<std::uint8_t> buffer;
 
 	std::size_t index_magnetic_flux_density_message = 0;
@@ -303,8 +303,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 				}
 			}
 		}
-
-		index_info_message = std::max(index_info_message, i - 1 - max_info_message_size + min_info_message_size);
+		if (int const tmp = i - 1 - max_info_message_size + min_info_message_size; tmp > 0) index_info_message = std::max(index_info_message, static_cast<std::size_t>(tmp));
 	}
 
 	void parse(std::span<std::uint8_t>&& data) override {
@@ -326,7 +325,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 int main() {
 	MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>, SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>> conn;
 
-	conn.open_serial_port("/dev/ttyUSB0");
+	conn.open_serial_port("/dev/cu.usbserial-0001");
 
 	conn.start_reading();
 

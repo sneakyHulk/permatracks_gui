@@ -18,7 +18,7 @@
 #include "Zeroing.h"
 
 class ZeroingTab : virtual protected SerialConnection,
-                   virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
+                   protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                    virtual protected Calibration<41>,
                    virtual protected Zeroing<41> {
 	enum class ZeroingTabState {
@@ -31,59 +31,57 @@ class ZeroingTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// ZeroingTab Data
+	std::shared_ptr<ERR> latest_error = nullptr;
+
+	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
 
    public:
 	ZeroingTab() {}
 	~ZeroingTab() { stop_thread(); }
 
+	void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) override {
+		for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetic_flux_density_message)) {
+			Eigen::Vector<double, 3> tmp;
+			tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+
+			tmp = calibration.transformation * (tmp - calibration.center);
+			magnetometer_datapoint.x = tmp.x();
+			magnetometer_datapoint.y = tmp.y();
+			magnetometer_datapoint.z = tmp.z();
+		}
+
+		magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>(magnetic_flux_density_message));
+	}
+
 	void start_thread() {
 		if (auto expected = ZeroingTabState::NONE; state.compare_exchange_strong(expected, ZeroingTabState::PLOTTING)) {
-			// thread = std::thread([this]() {
-			//	std::cout << "Zeroing Thread started" << std::endl;
-			//
-			//	while (true) {
-			//		auto current_state = state.load();
-			//
-			//		if (auto magnetometer_data = push([&current_state]() { return current_state == ZeroingTabState::PLOTTING or current_state == ZeroingTabState::ZEROING; }); magnetometer_data.has_value()) {
-			//			for (auto const& [calibration, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, magnetometer_data.value())) {
-			//				Eigen::Vector<double, 3> tmp;
-			//				tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
-			//
-			//				tmp = calibration.transformation * (tmp - calibration.center);
-			//				magnetometer_datapoint.x = tmp.x();
-			//				magnetometer_datapoint.y = tmp.y();
-			//				magnetometer_datapoint.z = tmp.z();
-			//			}
-			//
-			//			if (current_state == ZeroingTabState::PLOTTING) {
-			//				std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
-			//				continue;
-			//			}
-			//			if (current_state == ZeroingTabState::ZEROING) {
-			//				std::atomic_store_explicit(&zeroing_data, std::make_shared<MagneticFluxDensityDataNode>(zeroing_data, magnetometer_data.value()), std::memory_order_release);
-			//				continue;
-			//			}
-			//		} else {
-			//			if (SerialConnection::connected()) {
-			//				error_message = magnetometer_data.error().what();
-			//				SerialConnection::close_serial_port();
-			//
-			//				error.store(true);
-			//			} else {
-			//				state.store(ZeroingTabState::NONE);
-			//			}
-			//		}
-			//
-			//		break;
-			//	}
-			//
-			//	std::cout << "Zeroing Thread finished" << std::endl;
-			//});
+			thread = std::thread([this]() {
+				std::cout << "Zeroing Thread started" << std::endl;
+
+				while (state.load() != ZeroingTabState::NONE) {
+					if (auto serial_data = read_some(); serial_data.has_value()) {
+						parse(serial_data.value());
+					} else {
+						if (connected()) {
+							std::atomic_store(&latest_error, std::make_shared<ERR>(serial_data.error()));
+							close_serial_port();
+						} else {
+							state.store(ZeroingTabState::NONE);
+						}
+					}
+				}
+
+				std::cout << "Zeroing Thread finished" << std::endl;
+			});
 		}
 	}
 
 	void stop_thread() {
-		if (state.exchange(ZeroingTabState::NONE) != ZeroingTabState::NONE) stop_reading();
+		state.store(ZeroingTabState::NONE);
+		if (thread.joinable()) {
+			thread.join();
+		}
+		// if (state.exchange(ZeroingTabState::NONE) != ZeroingTabState::NONE) stop_reading();
 	}
 
 	void render() {
@@ -214,6 +212,9 @@ class ZeroingTab : virtual protected SerialConnection,
 
 			switch (state.load()) {
 				case ZeroingTabState::NONE: {
+					if (thread.joinable()) {
+						thread.join();
+					}
 					start_thread();
 
 					break;

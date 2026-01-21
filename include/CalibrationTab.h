@@ -29,7 +29,7 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 }
 
 class CalibrationTab : virtual protected SerialConnection,
-                       virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
+                       protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                        virtual protected Calibration<41> {
 	enum class CalibrationTabState {
 		NONE,
@@ -41,51 +41,47 @@ class CalibrationTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// CalibrationTab Data
+	std::shared_ptr<ERR> latest_error = nullptr;
+
+	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
 
    public:
 	CalibrationTab() {}
 	~CalibrationTab() { stop_thread(); }
 
+	void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) override {
+		magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>(magnetic_flux_density_message));
+	}
+
 	void start_thread() {
 		if (auto expected = CalibrationTabState::NONE; state.compare_exchange_strong(expected, CalibrationTabState::PLOTTING)) {
-			start_reading();
+			thread = std::thread([this]() {
+				std::cout << "Calibration Thread started" << std::endl;
 
-			// thread = std::thread([this]() {
-			//	std::cout << "Calibration Thread started" << std::endl;
-			//
-			//	while (true) {
-			//		auto current_state = state.load();
-			//
-			//		if (auto magnetometer_data = push([&current_state]() { return current_state == CalibrationTabState::CALIBRATING or current_state == CalibrationTabState::PLOTTING; }); magnetometer_data.has_value()) {
-			//			if (current_state == CalibrationTabState::PLOTTING) {
-			//				std::atomic_store_explicit(&plot_data, std::make_shared<MagneticFluxDensityDataNode>(plot_data, magnetometer_data.value()), std::memory_order_release);
-			//				continue;
-			//			}
-			//			if (current_state == CalibrationTabState::CALIBRATING) {
-			//				std::atomic_store_explicit(&calibration_data, std::make_shared<MagneticFluxDensityDataNode>(calibration_data, magnetometer_data.value()), std::memory_order_release);
-			//				continue;
-			//			}
-			//		} else {
-			//			if (SerialConnection::connected()) {
-			//				error_message = magnetometer_data.error().what();
-			//				SerialConnection::close_serial_port();
-			//
-			//				error.store(true);
-			//			} else {
-			//				state.store(CalibrationTabState::NONE);
-			//			}
-			//		}
-			//
-			//		break;
-			//	}
-			//
-			//	std::cout << "Calibration Thread finished" << std::endl;
-			//});
+				while (state.load() != CalibrationTabState::NONE) {
+					if (auto serial_data = read_some(); serial_data.has_value()) {
+						parse(serial_data.value());
+					} else {
+						if (connected()) {
+							std::atomic_store(&latest_error, std::make_shared<ERR>(serial_data.error()));
+							close_serial_port();
+						}
+
+						state.store(CalibrationTabState::NONE);
+					}
+				}
+
+				std::cout << "Calibration Thread finished" << std::endl;
+			});
 		}
 	}
 
 	void stop_thread() {
-		if (state.exchange(CalibrationTabState::NONE) != CalibrationTabState::NONE) stop_reading();
+		state.store(CalibrationTabState::NONE);
+		if (thread.joinable()) {
+			thread.join();
+		}
+		// if (state.exchange(CalibrationTabState::NONE) != CalibrationTabState::NONE) stop_reading();
 	}
 
 	void render() {
@@ -138,7 +134,6 @@ class CalibrationTab : virtual protected SerialConnection,
 
 			if (error_) {
 				stop_thread();
-				close_serial_port();
 
 				ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
 				ImGui::Begin("ERROR", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
@@ -270,6 +265,9 @@ class CalibrationTab : virtual protected SerialConnection,
 #if not SHOWCASE
 			switch (state.load()) {
 				case CalibrationTabState::NONE: {
+					if (thread.joinable()) {
+						thread.join();
+					}
 					start_thread();
 
 					break;

@@ -40,6 +40,7 @@ class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected 
 			} else {
 				ConnectionTab::render();
 			}
+
 			ImGui::EndTabItem();
 		}
 
@@ -52,7 +53,7 @@ class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected 
 
 			ImGui::EndTabItem();
 		} else {
-			//CalibrationTab::stop_thread();
+			CalibrationTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Zeroing", nullptr, previous_active_tab == "Zeroing" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -64,7 +65,7 @@ class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected 
 
 			ImGui::EndTabItem();
 		} else {
-			//ZeroingTab::stop_thread();
+			ZeroingTab::stop_thread();
 		}
 
 		if (ImGui::BeginTabItem("Magnet Selection", nullptr, previous_active_tab == "Magnet Selection" ? ImGuiTabItemFlags_SetSelected : 0)) {
@@ -86,7 +87,7 @@ class MainTabBar : protected ConnectionTab, protected CalibrationTab, protected 
 
 			ImGui::EndTabItem();
 		} else {
-			// TrackingTab::stop_thread();
+			TrackingTab::stop_thread();
 		}
 
 		ImGui::EndTabBar();

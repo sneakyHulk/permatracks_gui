@@ -46,14 +46,12 @@ void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4&
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 class TrackingTab : virtual protected SerialConnection,
-                    virtual protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>,  SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
+                    protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
                     virtual protected MagnetSelection,
                     virtual protected CeresOptimizerDirectionVector<25>,
                     virtual protected MLOptimizer<25> {
-	std::atomic_bool error = false;
-
 	enum class TrackingTabState {
 		NONE,
 		TRACKING,
@@ -80,98 +78,103 @@ class TrackingTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// TrackingTab Data
-	std::string error_message;
+	std::shared_ptr<ERR> latest_error = nullptr;
 
-	struct TrackingSolutionNode {
-		std::chrono::time_point<std::chrono::steady_clock> t;
-		std::shared_ptr<TrackingSolutionNode> next;
-		Message<Pack<Position, DirectionVector>> solution;
-		explicit TrackingSolutionNode(std::shared_ptr<TrackingSolutionNode> const& next, Message<Pack<Position, DirectionVector>> const& solution) : t(std::chrono::steady_clock::now()), next(next), solution(solution) {}
-	};
-	std::vector<std::shared_ptr<TrackingSolutionNode>> tracking_solutions;
+	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
+
+	std::vector<std::list<std::shared_ptr<Message<Pack<Position, DirectionVector>> const>>> tracking_solutions;
 
    public:
 	TrackingTab() = default;
-	~TrackingTab() {
-		// stop_thread();
+	~TrackingTab() { stop_thread(); }
+
+	void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) override {
+		for (auto const& [calibration, zeroing, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, Zeroing::_zeroings, magnetic_flux_density_message)) {
+			Eigen::Vector<double, 3> tmp;
+			tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
+
+			tmp = calibration.transformation * (tmp - calibration.center) - zeroing;
+			magnetometer_datapoint.x = tmp.x();
+			magnetometer_datapoint.y = tmp.y();
+			magnetometer_datapoint.z = tmp.z();
+		}
+
+		magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>(magnetic_flux_density_message));
 	}
 
-	//	void start_thread() {
-	//		if (auto expected = TrackingTabState::NONE; state.compare_exchange_strong(expected, TrackingTabState::TRACKING)) {
-	//			tracking_solutions = std::vector<std::shared_ptr<TrackingSolutionNode>>(MagnetSelection::_magnets.size(), nullptr);
-	//
-	//			thread = std::thread([this]() {
-	//				std::cout << "Tracking Thread started" << std::endl;
-	//
-	//				while (true) {
-	//					auto current_state = state.load();
-	//
-	//					if (auto magnetometer_data = MiMedMagnetometerArraySerialConnectionBinary::push([&current_state]() { return current_state == TrackingTabState::TRACKING; }); magnetometer_data.has_value()) {
-	//						for (auto const& [calibration, zeroing, magnetometer_datapoint] : std::ranges::views::zip(Calibration::_calibrations, Zeroing::_zeroings, magnetometer_data.value())) {
-	//							Eigen::Vector<double, 3> tmp;
-	//							tmp << magnetometer_datapoint.x, magnetometer_datapoint.y, magnetometer_datapoint.z;
-	//
-	//							tmp = calibration.transformation * (tmp - calibration.center) - zeroing;
-	//							magnetometer_datapoint.x = tmp.x();
-	//							magnetometer_datapoint.y = tmp.y();
-	//							magnetometer_datapoint.z = tmp.z();
-	//						}
-	//
-	//						if (current_state == TrackingTabState::TRACKING) {
-	//							auto const current_method = method.load();
-	// #if not SHOWCASE
-	//							if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
-	//								Message<Array<MagneticFluxDensityData, 25>> value;
-	//								for (auto const& [s25, s41] : std::ranges::views::zip(value, magnetometer_data.value()) | std::ranges::views::take(25)) {
-	//									s25 = s41;
-	//								}
-	//
-	//								auto const result = CeresOptimizerDirectionVector::process(value);
-	//
-	//								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-	//								continue;
-	//							}
-	// #endif
-	//							if (current_method == TrackingMethod::RESNET18) {
-	//								auto const result = MLOptimizer::process(magnetometer_data.value());
-	//
-	//								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-	//								continue;
-	//							}
-	//
-	//							if (current_method == TrackingMethod::ENCODER_DECODER) {
-	//								auto const result = MLOptimizer::process(magnetometer_data.value());
-	//
-	//								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-	//								continue;
-	//							}
-	//
-	//							if (current_method == TrackingMethod::NONE) {
-	//								auto const result = Message<Pack<Position, DirectionVector>>{};
-	//
-	//								std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-	//
-	//								continue;
-	//							}
-	//						}
-	//					}
-	//					break;
-	//				}
-	//
-	//				std::cout << "Tracking Thread finished" << std::endl;
-	//			});
-	//		}
-	//	}
+	void start_thread() {
+		if (auto expected = TrackingTabState::NONE; state.compare_exchange_strong(expected, TrackingTabState::TRACKING)) {
+			tracking_solutions = std::vector<std::list<std::shared_ptr<Message<Pack<Position, DirectionVector>> const>>>(MagnetSelection::_magnets.size());
 
-	// void stop_thread() {
-	//	state.store(TrackingTabState::NONE);
-	//	if (thread.joinable()) {
-	//		thread.join();
-	//	}
-	// }
+			thread = std::thread([this]() {
+				std::cout << "Tracking Thread started" << std::endl;
+
+				while (state.load() != TrackingTabState::NONE) {
+					if (auto serial_data = read_some(); serial_data.has_value()) {
+						parse(serial_data.value());
+					} else {
+						if (connected()) {
+							std::atomic_store(&latest_error, std::make_shared<ERR>(serial_data.error()));
+							close_serial_port();
+						} else {
+							state.store(TrackingTabState::NONE);
+						}
+					}
+
+					if (auto const current_head = magnetic_flux_density_messages.begin(); current_head != magnetic_flux_density_messages.end()) {
+						auto const current_method = method.load();
+#if not SHOWCASE
+						if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
+							Message<Array<MagneticFluxDensityData, 25>> value;
+							value.timestamp = (**current_head).timestamp;
+							value.src = (**current_head).src;
+
+							for (auto const& [s25, s41] : std::ranges::views::zip(value, **current_head) | std::ranges::views::take(25)) {
+								s25 = s41;
+							}
+
+							auto const result = CeresOptimizerDirectionVector::process(value);
+
+							tracking_solutions[0].push_front(std::make_shared<Message<Pack<Position, DirectionVector>>>(result));
+							continue;
+						}
+#endif
+						// if (current_method == TrackingMethod::RESNET18) {
+						// auto const result = MLOptimizer::process(magnetometer_data.value());
+						//
+						// std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
+						// continue;
+						//
+						//	if (current_method == TrackingMethod::ENCODER_DECODER) {
+						//	auto const result = MLOptimizer::process(magnetometer_data.value());
+						//
+						//	std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
+						//	continue;
+						//}
+						//
+						// if (current_method == TrackingMethod::NONE) {
+						//	auto const result = Message<Pack<Position, DirectionVector>>{};
+						//
+						//	std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
+						//
+						//	continue;
+					}
+				}
+
+				std::cout << "Tracking Thread finished" << std::endl;
+			});
+		}
+	}
+
+	void stop_thread() {
+		state.store(TrackingTabState::NONE);
+		if (thread.joinable()) {
+			thread.join();
+		}
+	}
 
 	void render() {
-		auto const error_ = error.load();
+		auto const error_ = std::atomic_load(&latest_error);
 		auto const connected_ = SerialConnection::connected();
 		auto const calibrated_ = Calibration::calibrated();
 		auto const zeroed_ = Zeroing::zeroed();
@@ -235,8 +238,8 @@ class TrackingTab : virtual protected SerialConnection,
 				ImGuizmo::DrawGrid(glm::value_ptr(view), glm::value_ptr(proj), glm::value_ptr(model), 10.0f);
 
 				for (auto const& [solutions, magnet] : std::ranges::views::zip(tracking_solutions, _magnets)) {
-					auto current_head = std::atomic_load_explicit(&solutions, std::memory_order_acquire);
-					auto current_time = std::chrono::steady_clock::now();
+					auto current_head = solutions.begin();
+					auto current_time = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now());
 
 					// Conversion to cm:
 					float const radius = magnet.R * 100.f;
@@ -245,9 +248,9 @@ class TrackingTab : virtual protected SerialConnection,
 					if (debug) {
 						glm::vec3 position = {0.f, 0.f, 0.f};
 						glm::vec3 direction = {0.f, 0.f, 0.f};
-						if (current_head) {
-							position = glm::vec3{current_head->solution.x, current_head->solution.y, current_head->solution.z};
-							direction = glm::vec3{current_head->solution.mx, current_head->solution.my, current_head->solution.mz};
+						if (current_head != solutions.end()) {
+							position = glm::vec3{(**current_head).x, (**current_head).y, (**current_head).z};
+							direction = glm::vec3{(**current_head).mx, (**current_head).my, (**current_head).mz};
 						}
 
 						// Conversion to cm:
@@ -265,38 +268,47 @@ class TrackingTab : virtual protected SerialConnection,
 						glm::vec3 direction = {0.f, 0.f, 0.f};
 						{
 							auto n_samples = 0;
-							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-								if (tmp_current_head->t + 250ms > current_time) {
-									position += glm::vec3{tmp_current_head->solution.x, tmp_current_head->solution.y, tmp_current_head->solution.z};
-									direction += glm::vec3{tmp_current_head->solution.mx, tmp_current_head->solution.my, tmp_current_head->solution.mz};
+							for (auto tmp_current_head = current_head; tmp_current_head != solutions.end(); ++tmp_current_head) {
+								if (auto const timestamp = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{std::chrono::nanoseconds{(**tmp_current_head).timestamp}}; timestamp + 250ms > current_time) {
+									position += glm::vec3{(**tmp_current_head).x, (**tmp_current_head).y, (**tmp_current_head).z};
+									direction += glm::vec3{(**tmp_current_head).mx, (**tmp_current_head).my, (**tmp_current_head).mz};
 									++n_samples;
 								} else {
-									tmp_current_head->next = nullptr;
+									std::cout << std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{std::chrono::nanoseconds{(**tmp_current_head).timestamp}} << std::endl;
+									std::cout << current_time << std::endl;
+									std::cout << (**tmp_current_head).timestamp << std::endl;
+									std::cout << timestamp - current_time << std::endl;
+									std::cout << std::chrono::time_point_cast<std::chrono::nanoseconds>(current_time).time_since_epoch().count() << std::endl;
+									std::cout << std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{std::chrono::nanoseconds{(**tmp_current_head).timestamp}})
+									                 .time_since_epoch()
+									                 .count()
+									          << std::endl;
 									break;
 								}
 							}
-							position /= n_samples;
-							direction /= n_samples;
+							if (n_samples != 0) {
+								position /= n_samples;
+								direction /= n_samples;
+							}
 						}
 
 						auto stddev = 0.f;
 						{
 							auto n_samples = 0;
-							for (auto tmp_current_head = current_head; tmp_current_head; tmp_current_head = tmp_current_head->next) {
-								if (tmp_current_head->t + 250ms > current_time) {
-									stddev += (tmp_current_head->solution.x - position.x) * (tmp_current_head->solution.x - position.x) + (tmp_current_head->solution.y - position.y) * (tmp_current_head->solution.y - position.y) +
-									          (tmp_current_head->solution.z - position.z) * (tmp_current_head->solution.z - position.z);
+							for (auto tmp_current_head = current_head; tmp_current_head != solutions.end(); ++tmp_current_head) {
+								if (auto const timestamp = std::chrono::time_point<std::chrono::system_clock, std::chrono::nanoseconds>{std::chrono::nanoseconds{(**tmp_current_head).timestamp}}; timestamp + 250ms > current_time) {
+									stddev += ((**tmp_current_head).x - position.x) * ((**tmp_current_head).x - position.x) + ((**tmp_current_head).y - position.y) * ((**tmp_current_head).y - position.y) +
+									          ((**tmp_current_head).z - position.z) * ((**tmp_current_head).z - position.z);
 									++n_samples;
 								} else {
-									if (tmp_current_head->next != nullptr) {
-										std::cout << "ERR" << std::endl;
-									}
-									tmp_current_head->next = nullptr;
+									solutions.erase(tmp_current_head, solutions.end());
 									break;
 								}
 							}
-							stddev /= n_samples;
-							stddev = std::sqrt(stddev);
+							if (n_samples != 0) {
+								stddev /= n_samples;
+								stddev = std::sqrt(stddev);
+							}
 
 							std::cout << stddev * 1000.f << "mm" << std::endl;
 						}
@@ -335,17 +347,17 @@ class TrackingTab : virtual protected SerialConnection,
 			}
 
 			if (error_) {
-				// stop_thread();
+				stop_thread();
 
 				ImGui::SetNextWindowPos(ImGui::GetMainViewport()->GetCenter(), ImGuiCond_Always, {0.5f, 0.5f});
 				ImGui::Begin("ERROR", nullptr, ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_AlwaysAutoResize);
 
-				ImGui::TextWrapped("%s", error_message.c_str());
+				ImGui::TextWrapped("%s", error_->message.c_str());
 				ImGui::Spacing();
 				ImGui::Separator();
 
 				if (ImGui::Button("OK", {500, 0})) {
-					error.store(false);
+					std::atomic_store(&latest_error, std::shared_ptr<ERR>{nullptr});
 				}
 
 				ImGui::End();
@@ -423,10 +435,10 @@ class TrackingTab : virtual protected SerialConnection,
 
 			switch (state) {
 				case TrackingTabState::NONE: {
-					// if (thread.joinable()) {
-					//	thread.join();
-					// }
-					// start_thread();
+					if (thread.joinable()) {
+						thread.join();
+					}
+					start_thread();
 					break;
 				}
 				case TrackingTabState::TRACKING: {

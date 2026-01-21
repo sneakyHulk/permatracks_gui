@@ -111,7 +111,7 @@ class ConnectionTab : virtual protected SerialConnection {
 					ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
 
 					if (auto reading = SerialConnection::read_some()) {
-						buffer.insert(buffer.end(), reading.value().begin(), reading.value().end());
+						buffer.insert(buffer.end(), reading.value().data.begin(), reading.value().data.end());
 					} else {
 						stop_tapping();
 

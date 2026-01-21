@@ -43,7 +43,7 @@ template <typename MagDataType, std::size_t start_index, std::size_t n_sensors>
 struct type_of<SENSOR_TYPE<MagDataType, start_index, n_sensors>> : std::type_identity<MagDataType> {};
 
 template <typename... SENSOR_TYPEs>
-requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual public SerialConnection {
+requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArraySerialConnectionBinary : virtual protected SerialConnection {
    protected:
 	static constexpr std::size_t total_mag_sensors = (0 + ... + n_sensors_of<SENSOR_TYPEs>::value);
 	static constexpr int magnetic_flux_density_message_size = 1 + ((4 + n_sensors_of<SENSOR_TYPEs>::value * sizeof(typename type_of<SENSOR_TYPEs>::type)) + ...) + sizeof(std::uint64_t) + 2 + 1;
@@ -56,8 +56,6 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	std::size_t index_timestamp_message = 0;
 	std::size_t index_info_message = 0;
 
-	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
-
 #ifdef DEBUG
 	std::uint64_t total_bytes_received = 0;
 	std::uint64_t total_message_bytes_timestamp_message = 0;
@@ -66,7 +64,9 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	std::chrono::time_point<std::chrono::system_clock> last_message;
 #endif
 
-	void parse_latest_timestamp_message() {
+	virtual void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) = 0;
+
+	void parse_latest_timestamp_message(MessagePart const& message_part) {
 		for (int i = buffer.size() - 1; i >= index_timestamp_message + timestamp_message_size - 1; --i) {
 			if (int const frame_start = i + 1 - timestamp_message_size, frame_end = i; buffer[frame_end] == 'T' && buffer[frame_start] == 'T') {
 				boost::crc_optimal<8, 0x07, 0x00, 0x00, false, false> crc;
@@ -81,16 +81,15 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					std::array<std::uint8_t, timestamp_message_size> message;
 
 					message[0] = 'T';
-					std::memcpy(message.data() + 1, &t_latest_message, sizeof(t_latest_message));
-					std::memcpy(message.data() + 1 + sizeof(t_latest_message), &t2, sizeof(t2));
-					crc.process_block(message.data() + 1, message.data() + 1 + sizeof(t_latest_message) + sizeof(t2));
+					std::memcpy(message.data() + 1, &message_part.timestamp, sizeof(message_part.timestamp));
+					std::memcpy(message.data() + 1 + sizeof(message_part.timestamp), &t2, sizeof(t2));
+					crc.process_block(message.data() + 1, message.data() + 1 + sizeof(message_part.timestamp) + sizeof(t2));
 					message[timestamp_message_size - 2] = crc.checksum();
 					message[timestamp_message_size - 1] = 'T';
 
 					if (auto const ret = write_all(message); !ret.has_value()) {
 						std::cout << "Attempt failed." << std::endl;
 					}
-
 #ifdef DEBUG
 					total_message_bytes_timestamp_message += timestamp_message_size;
 					std::cout << static_cast<double>(total_message_bytes_timestamp_message) / static_cast<double>(total_bytes_received) << std::endl;
@@ -98,7 +97,6 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
 					last_message = now;
 #endif
-
 					break;  // latest timestamp parsed -> no need to parse another one
 				}
 			}
@@ -141,10 +139,10 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					out.timestamp = std::bit_cast<std::uint64_t>(
 					    std::array{buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message],
 					        buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message], buffer[++index_magnetic_flux_density_message]});
+					out.timestamp = std::chrono::time_point_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now()).time_since_epoch().count();
 
 					index_magnetic_flux_density_message += 3;
-					magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>(out));
-
+					handle_parse_result(out);
 #ifdef DEBUG
 					total_message_bytes_magnetic_flux_density_message += magnetic_flux_density_message_size;
 					std::cout << static_cast<double>(total_message_bytes_magnetic_flux_density_message) / static_cast<double>(total_bytes_received) << std::endl;
@@ -187,14 +185,14 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 		if (int const tmp = i - 1 - max_info_message_size + min_info_message_size; tmp > 0) index_info_message = std::max(index_info_message, static_cast<std::size_t>(tmp));
 	}
 
-	void parse(std::span<std::uint8_t>&& data) override {
+	void parse(MessagePart const& message_part) {
 #ifdef DEBUG
-		total_bytes_received += data.size();
+		total_bytes_received += message_part.data.size();
 #endif
 
-		buffer.append_range(data);
+		buffer.append_range(message_part.data);
 
-		parse_latest_timestamp_message();
+		parse_latest_timestamp_message(message_part);
 		parse_magnetic_flux_density_messages();
 		parse_info_messages();
 

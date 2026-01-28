@@ -2,7 +2,7 @@
 
 // #include <common_output.h>
 
-#define SERIALCONNECTION_USE_BOOST
+// #define SERIALCONNECTION_USE_BOOST
 
 #ifdef SERIALCONNECTION_USE_BOOST
 #include <boost/asio.hpp>
@@ -60,7 +60,7 @@ class SerialConnection {
    protected:
 	Baudrate baud = Baudrate::BAUD230400;
 
-public:
+   public:
 #ifdef SERIALCONNECTION_USE_BOOST
 	explicit SerialConnection() : _serial_port(_context) { std::cout << "Connection()" << std::endl; }
 #else
@@ -126,42 +126,6 @@ public:
 		}
 	}
 
-	//	void start_reading() {
-	//		if (auto expected = ConnectionState::CONNECTED; state.compare_exchange_strong(expected, ConnectionState::READING)) {
-	//			connection_thread = std::thread([this]() {
-	//				std::cout << "connected" << std::endl;
-	//				std::array<std::uint8_t, 512> data;
-	//				while (state.load() == ConnectionState::READING) {
-	// #ifdef SERIALCONNECTION_USE_BOOST
-	//					boost::system::error_code ec;
-	//					if (std::size_t const bytes_transferred = _serial_port.read_some(boost::asio::buffer(data), ec); ec) {
-	//						std::atomic_store(&latest_error, std::make_shared<ERR>(ERR{ec.value(), ec.what()}));
-	//						std::cout << ec.what() << " (" << ec.value() << ")" << std::endl;
-	//						break;
-	//					} else if (bytes_transferred > 0) {
-	//						t_latest_message = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-	//						parse(std::span{data.data(), bytes_transferred});
-	//					}
-	// #else
-	//					if (ssize_t const bytes_transferred = read(_serial_port, data.data(), data.size()); bytes_transferred < 0) {
-	//						if (errno != EAGAIN && errno != EWOULDBLOCK) {
-	//							error.emplace(ERR{errno, std::strerror(errno)});
-	//							std::cout << std::strerror(errno) << " (" << errno << ")" << std::endl;
-	//							break;
-	//						}
-	//					} else if (bytes_transferred > 0) {
-	//						t_latest_message = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-	//						parse(std::span{data.data(), static_cast<std::size_t>(bytes_transferred)});
-	//					}
-	// #endif
-	//				}
-	//				std::cout << "disconnected!" << std::endl;
-	//			});
-	//		} else {
-	//			std::cout << "state is " << (expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR") << std::endl;
-	//		}
-	//	}
-
 	std::expected<void, ERR> write_all(std::span<std::uint8_t const> const buffer) {
 #ifdef SERIALCONNECTION_USE_BOOST
 		boost::system::error_code ec;
@@ -199,43 +163,33 @@ public:
 		return {};
 	}
 
-	// void stop_reading() {
-	// 	if (auto expected = ConnectionState::READING; state.compare_exchange_strong(expected, ConnectionState::CONNECTED)) {
-	// 		// if (connection_thread.joinable()) {
-	// 		connection_thread.join();
-	// 		//}
-	// 	} else {
-	// 		std::cout << "state is " << (expected == ConnectionState::CONNECTED ? "CONNECTED" : expected == ConnectionState::NONE ? "NONE" : expected == ConnectionState::READING ? "READING" : "ERROR") << std::endl;
-	// 	}
-	// }
-
 	std::expected<MessagePart, ERR> read_some() {
 		static std::array<char, 512> tmp;
 
 		if (state.load() == ConnectionState::CONNECTED) {
 #ifdef SERIALCONNECTION_USE_BOOST
 			boost::system::error_code ec;
-			std::size_t const n = _serial_port.read_some(boost::asio::buffer(tmp.data(), tmp.size()), ec);
+			std::size_t const bytes_transferred = _serial_port.read_some(boost::asio::buffer(tmp.data(), tmp.size()), ec);
 			std::uint64_t const timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
-
-			// if (ec == boost::asio::error::would_block || ec == boost::asio::error::try_again) {
-			//	return MessagePart{timestamp, std::span<const char>{tmp.data(), 0}};
-			// }
 
 			if (ec) {
 				return std::unexpected(ERR{ec.value(), ec.message()});
 			}
 
-			return MessagePart{timestamp, std::span<const char>{tmp.data(), n}};
+			return MessagePart{timestamp, std::span<const char>{tmp.data(), bytes_transferred}};
 #else
-			if (ssize_t const bytes_transferred = read(_serial_port, tmp.data(), tmp.size()); bytes_transferred < 0) {
+			ssize_t const bytes_transferred = read(_serial_port, tmp.data(), tmp.size());
+			std::uint64_t const timestamp = std::chrono::duration_cast<std::chrono::nanoseconds>(std::chrono::system_clock::now().time_since_epoch()).count();
+
+			if (bytes_transferred < 0) {
 				if (errno == EAGAIN || errno == EWOULDBLOCK) {
-					return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
+					return MessagePart{timestamp, std::span<const char>{tmp.data(), 0}};
 				}
+
 				return std::unexpected(ERR{errno, std::strerror(errno)});
-			} else {
-				return std::span<const char>{tmp.begin(), static_cast<std::size_t>(bytes_transferred)};
 			}
+
+			return MessagePart{timestamp, std::span<const char>{tmp.data(), static_cast<std::size_t>(bytes_transferred)}};
 #endif
 		}
 
@@ -243,10 +197,7 @@ public:
 	}
 
    protected:
-	~SerialConnection() {
-		// stop_reading();
-		close_serial_port();
-	}
+	~SerialConnection() { close_serial_port(); }
 
 	bool connected() const { return state.load() != ConnectionState::NONE; }
 };

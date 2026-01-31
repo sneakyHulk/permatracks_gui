@@ -22,3 +22,6 @@
 [submodule "thirdparty/common"]
 	path = thirdparty/common
 	url = https://github.com/sneakyHulk/common.git
+[submodule "thirdparty/msg"]
+	path = thirdparty/msg
+	url = https://github.com/sneakyHulk/permatracks_msg.git

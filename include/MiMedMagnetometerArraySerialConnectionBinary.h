@@ -1,5 +1,9 @@
 #pragma once
 
+#include <Array.h>
+#include <MagneticFluxDensityData.h>
+#include <Message.h>
+
 #include <boost/crc.hpp>
 #include <cstring>
 #include <iostream>
@@ -7,10 +11,7 @@
 #include <memory>
 #include <ranges>
 
-#include "Array.h"
 #include "ERROR.h"
-#include "MagneticFluxDensityData.h"
-#include "Message.h"
 #include "SerialConnection.h"
 
 // Primary template: defaults to false
@@ -63,6 +64,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 	std::uint64_t total_message_bytes_info_message = 0;
 	std::chrono::time_point<std::chrono::system_clock> last_message;
 #endif
+	MiMedMagnetometerArraySerialConnectionBinary() { std::cout << "MiMedMagnetometerArraySerialConnectionBinary(), Length is " << magnetic_flux_density_message_size << std::endl; }
 
 	virtual void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) = 0;
 
@@ -94,7 +96,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					total_message_bytes_timestamp_message += timestamp_message_size;
 					std::cout << static_cast<double>(total_message_bytes_timestamp_message) / static_cast<double>(total_bytes_received) << std::endl;
 					auto const now = std::chrono::system_clock::now();
-					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
+					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message).count() << " ms" << std::endl << std::endl;
 					last_message = now;
 #endif
 					break;  // latest timestamp parsed -> no need to parse another one
@@ -147,7 +149,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 					total_message_bytes_magnetic_flux_density_message += magnetic_flux_density_message_size;
 					std::cout << static_cast<double>(total_message_bytes_magnetic_flux_density_message) / static_cast<double>(total_bytes_received) << std::endl;
 					auto const now = std::chrono::system_clock::now();
-					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
+					std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message).count() << " ms" << std::endl << std::endl;
 					last_message = now;
 #endif
 				}
@@ -175,7 +177,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 						total_message_bytes_info_message += length;
 						std::cout << static_cast<double>(total_message_bytes_info_message) / static_cast<double>(total_bytes_received) << std::endl;
 						auto const now = std::chrono::system_clock::now();
-						std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message) << std::endl << std::endl;
+						std::cout << std::chrono::duration_cast<std::chrono::milliseconds>(now - last_message).count() << " ms" << std::endl << std::endl;
 						last_message = now;
 #endif
 					}
@@ -185,6 +187,7 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 		if (int const tmp = i - 1 - max_info_message_size + min_info_message_size; tmp > 0) index_info_message = std::max(index_info_message, static_cast<std::size_t>(tmp));
 	}
 
+   public:
 	void parse(MessagePart const& message_part) {
 #ifdef DEBUG
 		total_bytes_received += message_part.data.size();
@@ -205,6 +208,5 @@ requires(is_SENSOR_TYPE<SENSOR_TYPEs>::value && ...) class MiMedMagnetometerArra
 		index_info_message -= remove;
 	}
 
-   public:
 	~MiMedMagnetometerArraySerialConnectionBinary() { std::cout << "~MiMedMagnetometerArraySerialConnectionBinary()" << std::endl; }
 };

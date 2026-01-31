@@ -1,6 +1,6 @@
 #pragma once
 
-// #include <common_output.h>
+#include <cstring>
 
 // #define SERIALCONNECTION_USE_BOOST
 

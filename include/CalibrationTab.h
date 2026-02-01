@@ -1,10 +1,15 @@
 #pragma once
 
-#include <ATen/core/interned_strings.h>
+#include <MagArrayParser.h>
+#include <MagneticFluxDensityDataRawLIS3MDL.h>
+#include <MagneticFluxDensityDataRawMMC5983MA.h>
+#include <SerialConnection.h>
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
 #include <implot.h>
 #include <implot3d.h>
+
+#include <common_error.h>
 
 #include <chrono>
 #include <nlohmann/json.hpp>
@@ -14,10 +19,6 @@
 #include "Calibration.h"
 #include "EigenJsonUtils.h"
 #include "ImGuiFileDialog.h"
-#include "MagneticFluxDensityDataRawLIS3MDL.h"
-#include "MagneticFluxDensityDataRawMMC5983MA.h"
-#include "MiMedMagnetometerArraySerialConnectionBinary.h"
-#include "SerialConnection.h"
 
 inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono::seconds>> get_year_month_day_hh_mm_ss(std::chrono::system_clock::time_point const& t = std::chrono::system_clock::now()) {
 	auto const day = std::chrono::floor<std::chrono::days>(t);
@@ -28,9 +29,7 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 	return {ymd, hms};
 }
 
-class CalibrationTab : virtual protected SerialConnection,
-                       protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
-                       virtual protected Calibration<41> {
+class CalibrationTab : virtual protected SerialConnection, protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, virtual protected Calibration<41> {
 	enum class CalibrationTabState {
 		NONE,
 		PLOTTING,
@@ -41,7 +40,7 @@ class CalibrationTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// CalibrationTab Data
-	std::shared_ptr<ERR> latest_error = nullptr;
+	std::shared_ptr<common::Error> latest_error = nullptr;
 
 	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
 
@@ -63,7 +62,7 @@ class CalibrationTab : virtual protected SerialConnection,
 						parse(serial_data.value());
 					} else {
 						if (connected()) {
-							std::atomic_store(&latest_error, std::make_shared<ERR>(serial_data.error()));
+							std::atomic_store(&latest_error, std::make_shared<common::Error>(serial_data.error()));
 							close_serial_port();
 						}
 
@@ -143,7 +142,7 @@ class CalibrationTab : virtual protected SerialConnection,
 				ImGui::Separator();
 
 				if (ImGui::Button("OK", {500, 0})) {
-					std::atomic_store(&latest_error, std::shared_ptr<ERR>{nullptr});
+					std::atomic_store(&latest_error, std::shared_ptr<common::Error>{nullptr});
 				}
 
 				ImGui::End();

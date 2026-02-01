@@ -20,10 +20,10 @@
 #include "CeresOptimizerDirectionVector.h"
 #include "MLOptimizer.h"
 #include "MagnetSelection.h"
-#include "MagneticFluxDensityDataRawLIS3MDL.h"
-#include "MagneticFluxDensityDataRawMMC5983MA.h"
-#include "MiMedMagnetometerArraySerialConnectionBinary.h"
-#include "SerialConnection.h"
+#include <MagArrayParser.h>
+#include <MagneticFluxDensityDataRawLIS3MDL.h>
+#include <MagneticFluxDensityDataRawMMC5983MA.h>
+#include <SerialConnection.h>
 #include "Zeroing.h"
 
 using namespace std::chrono_literals;
@@ -46,7 +46,7 @@ void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4&
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
 class TrackingTab : virtual protected SerialConnection,
-                    protected MiMedMagnetometerArraySerialConnectionBinary<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
+                    protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                     virtual protected Calibration<41>,
                     virtual protected Zeroing<41>,
                     virtual protected MagnetSelection,
@@ -78,7 +78,7 @@ class TrackingTab : virtual protected SerialConnection,
 	std::thread thread;
 
 	// TrackingTab Data
-	std::shared_ptr<ERR> latest_error = nullptr;
+	std::shared_ptr<common::Error> latest_error = nullptr;
 
 	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
 
@@ -114,7 +114,7 @@ class TrackingTab : virtual protected SerialConnection,
 						parse(serial_data.value());
 					} else {
 						if (connected()) {
-							std::atomic_store(&latest_error, std::make_shared<ERR>(serial_data.error()));
+							std::atomic_store(&latest_error, std::make_shared<common::Error>(serial_data.error()));
 							close_serial_port();
 						} else {
 							state.store(TrackingTabState::NONE);
@@ -357,7 +357,7 @@ class TrackingTab : virtual protected SerialConnection,
 				ImGui::Separator();
 
 				if (ImGui::Button("OK", {500, 0})) {
-					std::atomic_store(&latest_error, std::shared_ptr<ERR>{nullptr});
+					std::atomic_store(&latest_error, std::shared_ptr<common::Error>{nullptr});
 				}
 
 				ImGui::End();

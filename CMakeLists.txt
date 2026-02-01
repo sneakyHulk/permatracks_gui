@@ -1,23 +1,36 @@
 cmake_minimum_required(VERSION 3.22)
 project(permatracks)
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_definitions(-DDEBUG)
-endif ()
+include(FetchContent)
 
-if (WIN32)
-    add_definitions(-DSERIALCONNECTION_USE_BOOST)
-endif ()
+set(CMAKE_CXX_STANDARD 23)
+
 
 set(ENV{PYTORCH_ROCM_ARCH} "gfx1030")
 message(STATUS "Forcing ROCm arch: ${PYTORCH_ROCM_ARCH}")
 
-set(SHOWCASE false)
 
+### add local libraries
+FetchContent_Declare(permatracks_data_collection SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/data_collection)
+FetchContent_MakeAvailable(permatracks_data_collection)
+add_library(permatracks_data_collection_${PROJECT_NAME} ALIAS permatracks_data_collection)
+set_target_properties(permatracks_data_collection PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+FetchContent_Declare(permatracks_msg SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/msg)
+FetchContent_MakeAvailable(permatracks_msg)
+add_library(permatracks_msg_${PROJECT_NAME} ALIAS permatracks_msg)
+set_target_properties(permatracks_msg PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+FetchContent_Declare(common SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/common)
+FetchContent_MakeAvailable(common)
+add_library(common_${PROJECT_NAME} ALIAS common)
+set_target_properties(common PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+
+set(SHOWCASE false)
 message(SHOWCASE: ${SHOWCASE})
 
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
-set(CMAKE_CXX_STANDARD 23)
 
 find_package(OpenGL REQUIRED)
 find_package(GLEW REQUIRED)
@@ -38,7 +51,7 @@ set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
 set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
 set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
 # set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-# set(MINIGLOG ON CACHE BOOL "" FORCE)      29426343932456097055
+# set(MINIGLOG ON CACHE BOOL "" FORCE)
 # set(MINIGLOG_MAX_LOG_LEVEL 0 CACHE BOOL "" FORCE)
 # set(CERES_NO_GLOG ON CACHE BOOL "" FORCE)
 add_subdirectory(thirdparty/ceres)
@@ -93,7 +106,7 @@ add_library(${PROJECT_NAME} src/MLOptimizer.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PRIVATE ${TORCH_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} PUBLIC msg)
+target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_msg)
 target_compile_options(${PROJECT_NAME} PRIVATE ${TORCH_CXX_FLAGS})
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
 target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
@@ -108,27 +121,27 @@ target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
 
-### add local libraries
 add_subdirectory(list_serial_devices)
-add_subdirectory(ring_buffer)
-add_subdirectory(thirdparty/msg)
 add_subdirectory(calibration)
 add_subdirectory(utils)
-# add_subdirectory(serial_connection)
-add_subdirectory(thirdparty/common)
 
 ### GUI
 project(gui)
 
 add_executable(${PROJECT_NAME} main.cpp
-        src/App.cpp src/MainTabBar.cpp
+        src/App.cpp
+        src/MainTabBar.cpp
         src/ConnectionTab.cpp
-        src/CalibrationTab.cpp src/Calibration.cpp
-        src/ZeroingTab.cpp src/Zeroing.cpp
-        src/MagnetSelectionTab.cpp src/MagnetSelection.cpp
-        src/TrackingTab.cpp src/CeresOptimizerDirectionVector.cpp src/dipol_model_with_direction_vector_25.cpp
-        src/SerialConnection.cpp
-        src/MiMedMagnetometerArraySerialConnectionBinary.cpp)
+        src/CalibrationTab.cpp
+        src/Calibration.cpp
+        src/ZeroingTab.cpp
+        src/Zeroing.cpp
+        src/MagnetSelectionTab.cpp
+        src/MagnetSelection.cpp
+        src/TrackingTab.cpp
+        src/CeresOptimizerDirectionVector.cpp
+        src/dipol_model_with_direction_vector_25.cpp
+)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
@@ -138,8 +151,8 @@ target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
 target_link_libraries(${PROJECT_NAME} PUBLIC imfiledialog)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
-target_link_libraries(${PROJECT_NAME} PUBLIC ring_buffer)
-target_link_libraries(${PROJECT_NAME} PUBLIC msg)
+target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_msg)
+target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_data_collection)
 target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
 target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
 target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
@@ -170,14 +183,4 @@ project(test_single_producer_single_consumer)
 
 add_executable(${PROJECT_NAME} test/test_single_producer_single_consumer.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-
-project(test_fast_io)
-
-add_executable(${PROJECT_NAME} test/test_fast_io.cpp)
-target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} PUBLIC utils)
-target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_msg)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")

@@ -5,6 +5,11 @@
 
 // Above includes must come before
 #include <ImGuizmo.h>
+#include <MagArrayParser.h>
+#include <MagneticFluxDensityDataRawAK09940A.h>
+#include <MagneticFluxDensityDataRawLIS3MDL.h>
+#include <MagneticFluxDensityDataRawMMC5983MA.h>
+#include <SerialConnection.h>
 #include <glad/glad.h>
 #include <implot.h>
 #include <implot3d.h>
@@ -20,10 +25,6 @@
 #include "CeresOptimizerDirectionVector.h"
 #include "MLOptimizer.h"
 #include "MagnetSelection.h"
-#include <MagArrayParser.h>
-#include <MagneticFluxDensityDataRawLIS3MDL.h>
-#include <MagneticFluxDensityDataRawMMC5983MA.h>
-#include <SerialConnection.h>
 #include "Zeroing.h"
 
 using namespace std::chrono_literals;
@@ -45,6 +46,7 @@ void DrawSphere(const glm::mat4& view, const glm::vec3& camPos, const glm::mat4&
 
 inline glm::vec3 to_imgui(glm::vec3 const& u) { return {-u.y, u.z, -u.x}; }
 
+#if BOARD_VERSION == 1
 class TrackingTab : virtual protected SerialConnection,
                     protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                     virtual protected Calibration<41>,
@@ -52,6 +54,15 @@ class TrackingTab : virtual protected SerialConnection,
                     virtual protected MagnetSelection,
                     virtual protected CeresOptimizerDirectionVector<25>,
                     virtual protected MLOptimizer<25> {
+#elif BOARD_VERSION == 2
+class TrackingTab : virtual protected SerialConnection,
+                    protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawAK09940A, 0, 111>>,
+                    virtual protected Calibration<111>,
+                    virtual protected Zeroing<111>,
+                    virtual protected MagnetSelection,
+                    virtual protected CeresOptimizerDirectionVector<111>,
+                    virtual protected MLOptimizer<25> {
+#endif
 	enum class TrackingTabState {
 		NONE,
 		TRACKING,
@@ -125,6 +136,7 @@ class TrackingTab : virtual protected SerialConnection,
 						auto const current_method = method.load();
 #if not SHOWCASE
 						if (current_method == TrackingMethod::OPTIMIZATION_PROBLEM) {
+#if BOARD_VERSION == 1
 							Message<Array<MagneticFluxDensityData, 25>> value;
 							value.timestamp = (**current_head).timestamp;
 							value.src = (**current_head).src;
@@ -134,6 +146,9 @@ class TrackingTab : virtual protected SerialConnection,
 							}
 
 							auto const result = CeresOptimizerDirectionVector::process(value);
+#elif BOARD_VERSION == 2
+							auto const result = CeresOptimizerDirectionVector::process(**current_head);
+#endif
 
 							tracking_solutions[0].push_front(std::make_shared<Message<Pack<Position, DirectionVector>>>(result));
 							continue;

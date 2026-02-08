@@ -8,6 +8,7 @@
 #include <memory>
 #include <ranges>
 #include <string>
+#include <common.h>
 
 #include "Array.h"
 #include "Direction.h"
@@ -94,6 +95,8 @@ class CeresOptimizerDirectionVector : virtual protected MagnetSelection {
 	std::array<double, 3> init_position;
 	std::array<double, 3> init_direction;
 	std::array<double, 3> init_offset = {0., 0., 0.};
+
+#if BOARD_VERSION == 1
 	std::array<double, 3 * N> noises = {
 	    0.04 * 1e-6,
 	    0.04 * 1e-6,
@@ -170,55 +173,61 @@ class CeresOptimizerDirectionVector : virtual protected MagnetSelection {
 	    0.04 * 1e-6,
 	    0.04 * 1e-6,
 	    0.04 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.32 * 1e-6,
-	    //0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.32 * 1e-6,
+	    // 0.41 * 1e-6,
+
 	};
+#elif BOARD_VERSION == 2
+	std::array<double, 3 * N> noises = common::filled_array<3 * N>(0.04 * 1e-6);
+#endif
+
+
 
    public:
 	explicit CeresOptimizerDirectionVector(std::array<double, 3> &&init_position = {75e-3, 75e-3, 75e-3}, std::array<double, 3> &&init_direction = {1., 0., 0.}) : init_position(init_position), init_direction(init_direction) {

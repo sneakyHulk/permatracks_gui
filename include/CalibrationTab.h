@@ -3,6 +3,7 @@
 #include <MagArrayParser.h>
 #include <MagneticFluxDensityDataRawLIS3MDL.h>
 #include <MagneticFluxDensityDataRawMMC5983MA.h>
+#include <MagneticFluxDensityDataRawAK09940A.h>
 #include <SerialConnection.h>
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
@@ -28,8 +29,11 @@ inline std::tuple<std::chrono::year_month_day, std::chrono::hh_mm_ss<std::chrono
 
 	return {ymd, hms};
 }
-
+#if BOARD_VERSION == 1
 class CalibrationTab : virtual protected SerialConnection, protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>, virtual protected Calibration<41> {
+#elif BOARD_VERSION == 2
+class CalibrationTab : virtual protected SerialConnection, protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawAK09940A, 0, 111>>, virtual protected Calibration<111> {
+#endif
 	enum class CalibrationTabState {
 		NONE,
 		PLOTTING,

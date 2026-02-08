@@ -3,6 +3,7 @@
 #include <MagArrayParser.h>
 #include <MagneticFluxDensityDataRawLIS3MDL.h>
 #include <MagneticFluxDensityDataRawMMC5983MA.h>
+#include <MagneticFluxDensityDataRawAK09940A.h>
 #include <SerialConnection.h>
 #include <hello_imgui/hello_imgui.h>
 #include <imgui.h>
@@ -17,10 +18,17 @@
 #include "CalibrationTab.h"
 #include "Zeroing.h"
 
+#if BOARD_VERSION == 1
 class ZeroingTab : virtual protected SerialConnection,
                    protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawLIS3MDL, 25, 16>, SENSOR_TYPE<MagneticFluxDensityDataRawMMC5983MA, 0, 25>>,
                    virtual protected Calibration<41>,
                    virtual protected Zeroing<41> {
+#elif BOARD_VERSION == 2
+class ZeroingTab : virtual protected SerialConnection,
+				   protected MagArrayParser<SENSOR_TYPE<MagneticFluxDensityDataRawAK09940A, 0, 111>>,
+				   virtual protected Calibration<111>,
+				   virtual protected Zeroing<111> {
+#endif
 	enum class ZeroingTabState {
 		NONE,
 		PLOTTING,

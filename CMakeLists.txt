@@ -30,6 +30,9 @@ set_target_properties(common PROPERTIES EXCLUDE_FROM_ALL TRUE)
 set(SHOWCASE false)
 message(SHOWCASE: ${SHOWCASE})
 
+set(BOARD_VERSION 2)
+message(VERSION: ${VERSION})
+
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
 
 find_package(OpenGL REQUIRED)
@@ -140,8 +143,12 @@ add_executable(${PROJECT_NAME} main.cpp
         src/MagnetSelection.cpp
         src/TrackingTab.cpp
         src/CeresOptimizerDirectionVector.cpp
-        src/dipol_model_with_direction_vector_25.cpp
 )
+if (BOARD_VERSION EQUAL 1)
+    target_sources(${PROJECT_NAME} PUBLIC src/dipol_model_with_direction_vector_25.cpp)
+elseif (BOARD_VERSION EQUAL 2)
+    target_sources(${PROJECT_NAME} PUBLIC src/dipol_model_with_direction_vector_111.cpp)
+endif ()
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
 target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
@@ -151,8 +158,8 @@ target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
 target_link_libraries(${PROJECT_NAME} PUBLIC imfiledialog)
 target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
 target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
-target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_msg)
-target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_data_collection)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_msg)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_data_collection)
 target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
 target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
 target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
@@ -161,10 +168,10 @@ target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
 target_link_libraries(${PROJECT_NAME} PRIVATE ml)
 target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
 target_link_libraries(${PROJECT_NAME} PUBLIC utils)
-target_link_libraries(${PROJECT_NAME} PUBLIC common)
+target_link_libraries(${PROJECT_NAME} PRIVATE common)
 target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
 target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE})
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE} BOARD_VERSION=${BOARD_VERSION} C10_USE_MINIMAL_GLOG)
 target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 project(test_magnet)

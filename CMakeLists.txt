@@ -21,10 +21,23 @@ FetchContent_MakeAvailable(permatracks_msg)
 add_library(permatracks_msg_${PROJECT_NAME} ALIAS permatracks_msg)
 set_target_properties(permatracks_msg PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
+FetchContent_Declare(permatracks_optimization SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/optimization)
+FetchContent_MakeAvailable(permatracks_optimization)
+add_library(permatracks_optimization_${PROJECT_NAME} ALIAS permatracks_optimization)
+set_target_properties(permatracks_optimization PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
 FetchContent_Declare(common SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/common)
 FetchContent_MakeAvailable(common)
 add_library(common_${PROJECT_NAME} ALIAS common)
 set_target_properties(common PROPERTIES EXCLUDE_FROM_ALL TRUE)
+
+set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
+set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
+set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
+FetchContent_Declare(ceres SOURCE_DIR ${PROJECT_SOURCE_DIR}/external/common)
+FetchContent_MakeAvailable(ceres)
+add_library(ceres_${PROJECT_NAME} ALIAS ceres)
+set_target_properties(ceres PROPERTIES EXCLUDE_FROM_ALL TRUE)
 
 
 set(SHOWCASE false)
@@ -46,18 +59,6 @@ find_package(Eigen3 REQUIRED)
 find_package(Torch REQUIRED)
 find_package(GLOG REQUIRED)
 find_package(nlohmann_json REQUIRED)
-
-### Ceres
-# set(USE_CUDA OFF CACHE BOOL "" FORCE)
-# set(PROVIDE_UNINSTALL_TARGET OFF CACHE BOOL "" FORCE)
-set(BUILD_EXAMPLES OFF CACHE BOOL "" FORCE)
-set(BUILD_TESTING OFF CACHE BOOL "" FORCE)
-set(BUILD_BENCHMARKS OFF CACHE BOOL "" FORCE)
-# set(BUILD_SHARED_LIBS ON CACHE BOOL "" FORCE)
-# set(MINIGLOG ON CACHE BOOL "" FORCE)
-# set(MINIGLOG_MAX_LOG_LEVEL 0 CACHE BOOL "" FORCE)
-# set(CERES_NO_GLOG ON CACHE BOOL "" FORCE)
-add_subdirectory(thirdparty/ceres)
 
 ### HELLOIMGUI
 set(HELLOIMGUI_USE_GLFW3 ON CACHE BOOL "" FORCE)
@@ -98,81 +99,11 @@ project(sophus)
 add_library(${PROJECT_NAME} INTERFACE)
 target_link_libraries(${PROJECT_NAME} INTERFACE Eigen3::Eigen)
 target_include_directories(${PROJECT_NAME} INTERFACE thirdparty/sophus/sophus)
-target_link_libraries(${PROJECT_NAME} INTERFACE Ceres::ceres)
-
-### LibTorch
-project(ml LANGUAGES C CXX)
-
-find_package(Torch REQUIRED)
-
-add_library(${PROJECT_NAME} src/MLOptimizer.cpp)
-target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_include_directories(${PROJECT_NAME} PUBLIC ${TORCH_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PRIVATE ${TORCH_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} PUBLIC permatracks_msg)
-target_compile_options(${PROJECT_NAME} PRIVATE ${TORCH_CXX_FLAGS})
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_17)
-target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-
-project(test_torch)
-
-add_executable(${PROJECT_NAME} test/${PROJECT_NAME}.cpp)
-target_link_libraries(${PROJECT_NAME} PRIVATE ml)
-target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
-
+target_link_libraries(${PROJECT_NAME} INTERFACE ceres)
 
 add_subdirectory(list_serial_devices)
 add_subdirectory(calibration)
 add_subdirectory(utils)
-
-### GUI
-project(gui)
-
-add_executable(${PROJECT_NAME} main.cpp
-        src/App.cpp
-        src/MainTabBar.cpp
-        src/ConnectionTab.cpp
-        src/CalibrationTab.cpp
-        src/Calibration.cpp
-        src/ZeroingTab.cpp
-        src/Zeroing.cpp
-        src/MagnetSelectionTab.cpp
-        src/MagnetSelection.cpp
-        src/TrackingTab.cpp
-        src/CeresOptimizerDirectionVector.cpp
-)
-if (BOARD_VERSION EQUAL 1)
-    target_sources(${PROJECT_NAME} PUBLIC src/dipol_model_with_direction_vector_25.cpp)
-elseif (BOARD_VERSION EQUAL 2)
-    target_sources(${PROJECT_NAME} PUBLIC src/dipol_model_with_direction_vector_111.cpp)
-endif ()
-target_include_directories(${PROJECT_NAME} PUBLIC include)
-target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
-target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
-target_link_libraries(${PROJECT_NAME} PUBLIC implot)
-target_link_libraries(${PROJECT_NAME} PUBLIC implot3d)
-target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
-target_link_libraries(${PROJECT_NAME} PUBLIC imfiledialog)
-target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
-target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
-target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_msg)
-target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_data_collection)
-target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
-target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
-target_link_libraries(${PROJECT_NAME} PUBLIC ceres)
-target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
-target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
-target_link_libraries(${PROJECT_NAME} PRIVATE ml)
-target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
-target_link_libraries(${PROJECT_NAME} PUBLIC utils)
-target_link_libraries(${PROJECT_NAME} PRIVATE common)
-target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
-target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
-target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE} BOARD_VERSION=${BOARD_VERSION} C10_USE_MINIMAL_GLOG)
-target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)
 
 project(test_magnet)
 
@@ -191,3 +122,42 @@ project(test_single_producer_single_consumer)
 add_executable(${PROJECT_NAME} test/test_single_producer_single_consumer.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
+
+### GUI
+project(gui)
+
+add_executable(${PROJECT_NAME} main.cpp
+        src/App.cpp
+        src/MainTabBar.cpp
+        src/ConnectionTab.cpp
+        src/CalibrationTab.cpp
+        src/Calibration.cpp
+        src/ZeroingTab.cpp
+        src/Zeroing.cpp
+        src/MagnetSelectionTab.cpp
+        src/TrackingTab.cpp
+)
+target_include_directories(${PROJECT_NAME} PUBLIC include)
+target_include_directories(${PROJECT_NAME} PUBLIC ${Boost_INCLUDE_DIRS})
+target_link_libraries(${PROJECT_NAME} PUBLIC hello_imgui)
+target_link_libraries(${PROJECT_NAME} PUBLIC implot)
+target_link_libraries(${PROJECT_NAME} PUBLIC implot3d)
+target_link_libraries(${PROJECT_NAME} PUBLIC imguizmo)
+target_link_libraries(${PROJECT_NAME} PUBLIC imfiledialog)
+target_link_libraries(${PROJECT_NAME} PUBLIC ${Boost_LIBRARIES})
+target_link_libraries(${PROJECT_NAME} PUBLIC list_serial_devices)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_msg)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_optimization)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_optimization_ml)
+target_link_libraries(${PROJECT_NAME} PRIVATE permatracks_data_collection)
+target_link_libraries(${PROJECT_NAME} PUBLIC TBB::tbb)
+target_link_libraries(${PROJECT_NAME} PUBLIC calibration)
+target_link_libraries(${PROJECT_NAME} PUBLIC Eigen3::Eigen)
+target_link_libraries(${PROJECT_NAME} PUBLIC sophus)
+target_link_libraries(${PROJECT_NAME} PRIVATE glog::glog)
+target_link_libraries(${PROJECT_NAME} PUBLIC utils)
+target_link_libraries(${PROJECT_NAME} PRIVATE common)
+target_link_libraries(${PROJECT_NAME} PUBLIC eigen_utils)
+target_link_libraries(${PROJECT_NAME} PUBLIC nlohmann_json::nlohmann_json)
+target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}" SHOWCASE=${SHOWCASE} BOARD_VERSION=${BOARD_VERSION} C10_USE_MINIMAL_GLOG)
+target_compile_features(${PROJECT_NAME} PRIVATE cxx_std_23)

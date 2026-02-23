@@ -10,12 +10,16 @@
 #include <MagneticFluxDensityDataRawLIS3MDL.h>
 #include <MagneticFluxDensityDataRawMMC5983MA.h>
 #include <SerialConnection.h>
+#include <common.h>
+#include <common_output.h>
+#include <common_time.h>
 #include <glad/glad.h>
 #include <implot.h>
 #include <implot3d.h>
 
 #include <chrono>
 #include <expected>
+#include <filesystem>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -90,13 +94,21 @@ class TrackingTab : virtual protected SerialConnection,
 
 	// TrackingTab Data
 	std::shared_ptr<common::Error> latest_error = nullptr;
-
 	std::list<std::shared_ptr<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>> magnetic_flux_density_messages;
-
 	std::vector<std::list<std::shared_ptr<Message<Pack<Position, DirectionVector>> const>>> tracking_solutions;
 
+	std::ofstream trajectory_file = std::ofstream(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "runs" / common::stringprint(common::to_string(std::chrono::system_clock::now())));
+
    public:
-	TrackingTab() = default;
+	TrackingTab() {
+		trajectory_file << "timestamp";
+		for (auto i = 0; i < total_mag_sensors; ++i) {
+			trajectory_file << ",x" << i;
+			trajectory_file << ",y" << i;
+			trajectory_file << ",z" << i;
+		}
+		trajectory_file << std::endl;
+	}
 	~TrackingTab() { stop_thread(); }
 
 	void handle_parse_result(Message<Array<MagneticFluxDensityData, total_mag_sensors>>& magnetic_flux_density_message) override {
@@ -109,6 +121,14 @@ class TrackingTab : virtual protected SerialConnection,
 			magnetometer_datapoint.y = tmp.y();
 			magnetometer_datapoint.z = tmp.z();
 		}
+
+		trajectory_file << magnetic_flux_density_message.timestamp;
+		for (const auto& [x, y, z] : magnetic_flux_density_message) {
+			trajectory_file << "," << x;
+			trajectory_file << "," << y;
+			trajectory_file << "," << z;
+		}
+		trajectory_file << std::endl;
 
 		magnetic_flux_density_messages.push_front(std::make_shared<Message<Array<MagneticFluxDensityData, total_mag_sensors>>>(magnetic_flux_density_message));
 	}

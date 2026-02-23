@@ -28,3 +28,6 @@
 [submodule "external/data_collection"]
 	path = external/data_collection
 	url = https://github.com/sneakyHulk/permatracks_data_collection.git
+[submodule "external/optimization"]
+	path = external/optimization
+	url = https://github.com/sneakyHulk/permatracks_optimization.git

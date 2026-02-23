@@ -179,9 +179,8 @@ class CalibrationTab : virtual protected SerialConnection, protected MagArrayPar
 				ImGui::Spacing();
 				ImGui::Separator();
 
-				constexpr int total = 41;
-				int const cols = static_cast<int>(std::ceil(std::sqrt(total)));
-				int const rows = static_cast<int>(std::ceil(static_cast<float>(total) / cols));
+				int const cols = static_cast<int>(std::ceil(std::sqrt(total_mag_sensors)));
+				int const rows = static_cast<int>(std::ceil(static_cast<float>(total_mag_sensors) / cols));
 
 				if (ImGui::BeginTabBar("Transformations and Centers Tabbar", ImGuiTabBarFlags_None)) {
 					if (ImGui::BeginTabItem("Transformations")) {
@@ -190,7 +189,7 @@ class CalibrationTab : virtual protected SerialConnection, protected MagArrayPar
 								ImGui::TableNextRow();
 								for (int col = 0; col < cols; ++col) {
 									ImGui::TableSetColumnIndex(col);
-									if (index < total) {
+									if (index < total_mag_sensors) {
 										auto& [transformation, center] = _calibrations[index++];  // assume p is callable or has operator()(i)
 										ImGui::BeginGroup();
 										for (int i = 0; i < 3; ++i) {
@@ -213,7 +212,7 @@ class CalibrationTab : virtual protected SerialConnection, protected MagArrayPar
 								ImGui::TableNextRow();
 								for (int col = 0; col < cols; ++col) {
 									ImGui::TableSetColumnIndex(col);
-									if (index < total) {
+									if (index < total_mag_sensors) {
 										auto& [transformation, center] = _calibrations[index++];  // assume p is callable or has operator()(i)
 										ImGui::Text("x: %.2e", center(0));
 										ImGui::Text("y: %.2e", center(1));

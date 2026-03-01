@@ -65,7 +65,7 @@ class TrackingTab : virtual protected SerialConnection,
                     virtual protected Zeroing<111>,
                     virtual protected MagnetSelection,
                     virtual protected CeresOptimizerDirectionVector<111>,
-                    virtual protected MLOptimizer<25> {
+                    virtual protected MLOptimizer<111> {
 #endif
 	enum class TrackingTabState {
 		NONE,
@@ -78,6 +78,7 @@ class TrackingTab : virtual protected SerialConnection,
 		OPTIMIZATION_PROBLEM,
 		RESNET18,
 		ENCODER_DECODER,
+		UNET,
 	};
 	std::string to_string(TrackingMethod const method) const {
 		switch (method) {
@@ -85,6 +86,7 @@ class TrackingTab : virtual protected SerialConnection,
 			case TrackingMethod::OPTIMIZATION_PROBLEM: return "OPTIMIZATION_PROBLEM";
 			case TrackingMethod::RESNET18: return "RESNET18";
 			case TrackingMethod::ENCODER_DECODER: return "ENCODER_DECODER";
+			case TrackingMethod::UNET: return "UNET";
 		}
 		return {};
 	}
@@ -174,25 +176,27 @@ class TrackingTab : virtual protected SerialConnection,
 							continue;
 						}
 #endif
-						// if (current_method == TrackingMethod::RESNET18) {
-						// auto const result = MLOptimizer::process(magnetometer_data.value());
-						//
-						// std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-						// continue;
-						//
-						//	if (current_method == TrackingMethod::ENCODER_DECODER) {
+						if (current_method == TrackingMethod::RESNET18 || current_method == TrackingMethod::UNET || current_method == TrackingMethod::ENCODER_DECODER) {
+							auto const result = MLOptimizer::process(**current_head);
+
+							tracking_solutions[0].push_front(std::make_shared<Message<Pack<Position, DirectionVector>>>(result));
+							continue;
+						}
+
+						// if (current_method == TrackingMethod::ENCODER_DECODER) {
 						//	auto const result = MLOptimizer::process(magnetometer_data.value());
 						//
 						//	std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
 						//	continue;
 						//}
 						//
-						// if (current_method == TrackingMethod::NONE) {
-						//	auto const result = Message<Pack<Position, DirectionVector>>{};
-						//
-						//	std::atomic_store_explicit(&tracking_solutions[0], std::make_shared<TrackingSolutionNode>(tracking_solutions[0], result), std::memory_order_release);
-						//
-						//	continue;
+						if (current_method == TrackingMethod::NONE) {
+							auto const result = Message<Pack<Position, DirectionVector>>{};
+
+							tracking_solutions[0].push_front(std::make_shared<Message<Pack<Position, DirectionVector>>>(result));
+
+							continue;
+						}
 					}
 				}
 
@@ -497,9 +501,13 @@ class TrackingTab : virtual protected SerialConnection,
 							method.store(TrackingMethod::RESNET18);
 						}
 
-						if (ImGui::Selectable(to_string(TrackingMethod::ENCODER_DECODER).c_str(), current_method == TrackingMethod::RESNET18)) {
+						if (ImGui::Selectable(to_string(TrackingMethod::ENCODER_DECODER).c_str(), current_method == TrackingMethod::ENCODER_DECODER)) {
 							MLOptimizer::set_model(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "models" / "inverse_biot_savart_net_encoder_decoder_100000.pt");
 							method.store(TrackingMethod::ENCODER_DECODER);
+						}
+						if (ImGui::Selectable(to_string(TrackingMethod::UNET).c_str(), current_method == TrackingMethod::UNET)) {
+							MLOptimizer::set_model(std::filesystem::path(CMAKE_SOURCE_DIR) / "data" / "models" / "inverse_biot_savart_unet_with_direction_and_HEALPix_111_10000000.pt");
+							method.store(TrackingMethod::UNET);
 						}
 						ImGui::EndCombo();
 					}

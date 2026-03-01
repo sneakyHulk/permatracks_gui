@@ -119,7 +119,7 @@ target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOU
 
 project(test_single_producer_single_consumer)
 
-add_executable(${PROJECT_NAME} test/test_single_producer_single_consumer.cpp)
+add_executable(${PROJECT_NAME} test/${PROJECT_NAME}.cpp)
 target_include_directories(${PROJECT_NAME} PUBLIC include)
 target_compile_definitions(${PROJECT_NAME} PRIVATE CMAKE_SOURCE_DIR="${CMAKE_SOURCE_DIR}")
 
